@@ -1,0 +1,12 @@
+RewriteEngine On
+
+# Ensure Authorization header reaches PHP
+SetEnvIf Authorization "(.*)" HTTP_AUTHORIZATION=$1
+
+# If the file exists, just serve it
+RewriteCond %{REQUEST_FILENAME} -f
+RewriteRule ^ - [L]
+
+# Support path parameters
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteRule ^(.*\.php)/(.*)$ $1 [QSA,L]

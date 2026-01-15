@@ -1,13 +1,14 @@
 import React from 'react';
 
-const TextArea = ({ rows = 3, placeholder, value, onChange }) => {
+const TextArea = ({ isDark, className = "", ...props }) => {
   return (
     <textarea
-      rows={rows}
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      placeholder={placeholder}
-      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 outline-none transition-all focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10"
+      className={`w-full px-4 py-3 rounded-xl border transition-all outline-none text-sm resize-none ${
+        isDark 
+          ? 'bg-slate-950 border-slate-800 text-slate-300 placeholder:text-slate-600 focus:border-indigo-500/50' 
+          : 'bg-white border-gray-300 text-gray-900'
+      } ${className}`}
+      {...props}
     />
   );
 };

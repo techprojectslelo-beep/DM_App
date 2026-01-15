@@ -1,18 +1,17 @@
-import React, { forwardRef } from 'react';
+import React from 'react';
 
-const InputField = forwardRef(({ type = "text", placeholder, value, onChange, disabled, className = "" }, ref) => {
+const InputField = React.forwardRef(({ isDark, className = "", ...props }, ref) => {
   return (
     <input
       ref={ref}
-      type={type}
-      value={value}
-      onChange={onChange}
-      disabled={disabled}
-      placeholder={placeholder}
-      className={`w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 outline-none transition-all focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 disabled:bg-slate-50 disabled:text-slate-400 ${className}`}
+      className={`w-full px-4 py-2.5 rounded-xl border transition-all outline-none text-sm ${
+        isDark 
+          ? 'bg-slate-950 border-slate-800 text-slate-300 placeholder:text-slate-400 focus:border-indigo-500/50' 
+          : 'bg-white border-gray-300 text-gray-900 focus:border-blue-500'
+      } ${className}`}
+      {...props}
     />
   );
 });
 
-InputField.displayName = "InputField";
 export default InputField;
