@@ -24,8 +24,8 @@ if (php_sapi_name() !== 'cli') {
 
     // 4. ESSENTIAL HEADERS
     header("Access-Control-Allow-Methods: GET, POST,PATCH, PUT, DELETE, OPTIONS");
-    header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With, X-Auth-Token, Time-Zone");
     header("Access-Control-Allow-Credentials: true");
+    header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With, X-User-Role, X-Auth-Token, Time-Zone");
     header("Access-Control-Max-Age: 86400"); // Cache preflight for 24 hours
 
     /**

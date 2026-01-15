@@ -1,30 +1,34 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
-  content: [
-    "./src/**/*.{js,jsx,ts,tsx}",
-  ],
+  content: ["./src/**/*.{js,jsx,ts,tsx}"],
   theme: {
     extend: {
+      // 1. Force the professional font globally
+      fontFamily: {
+        sans: ['Outfit', 'sans-serif'],
+      },
       borderRadius: {
-        '4xl': '2.5rem',
-      },
-      // CONTROL LETTER SPACING HERE
-      letterSpacing: {
-        'brand-tight': '-0.02em',   // For main headings (makes them look premium)
-        'brand-normal': '0em',      // For body text
-        'brand-compressed': '-0.01em', // For table data so it fits better
-      },
-      fontWeight: {
-        'brand-heading': '800',      
-        'brand-table-head': '800',   
-        'brand-body-bold': '700',    
-        'brand-detail': '600',       
+        '4xl': '2.5rem', // For those smooth rounded containers in your reference
       },
       colors: {
         brand: {
-          darkText: '#cbd5e1', // slate-300
-          lightText: '#475569', // slate-600
+          primary: '#465fff', // The signature blue from your sidebar
+          darkText: '#cbd5e1', // slate-300 for Dark Theme
+          lightText: '#475569', // slate-600 for Light Theme
+        },
+        surface: {
+          light: '#f9fafb', // The soft background color in image_5dcfac
+          dark: '#0f172a',
         }
+      },
+      // 2. Adjusting weights to match the "Clean" look (Less aggressive)
+      fontWeight: {
+        'heading': '600',  // SemiBold for titles
+        'body': '400',     // Regular for standard text
+        'detail': '500',   // Medium for navigation/buttons
+      },
+      letterSpacing: {
+        'brand': '-0.01em', // Subtle compression for that premium feel
       }
     },
   },

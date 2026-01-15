@@ -1,4 +1,5 @@
-import React, { useState, useMemo, useEffect } from "react"; // Added useEffect
+import React, { useState, useMemo, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Table,
   TableBody,
@@ -11,12 +12,16 @@ import {
   Plus, Search, RefreshCw, ChevronRight, 
   User, ShieldCheck, Mail
 } from "lucide-react";
-import axiosClient from "../api/axiosClient"; // Import our axios client
+import axiosClient from "../api/axiosClient";
 
-export default function UsersList({ onUserClick, onAddStaff, isDark }) {
+export default function UsersList({ isDark }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(false);
-  const [users, setUsers] = useState([]); // Now starts empty
+  const [users, setUsers] = useState([]);
+  const navigate = useNavigate();
+
+  // Color constants based on your preference: Slate 300 for dark, 600 for light
+  const secondaryTextColor = isDark ? 'text-slate-300' : 'text-slate-600';
 
   // 1. Fetch data on component mount
   useEffect(() => {
@@ -27,10 +32,9 @@ export default function UsersList({ onUserClick, onAddStaff, isDark }) {
     setLoading(true);
     try {
       const response = await axiosClient.get('/users.php');
-      // Note: Map backend 'full_name' to your 'name' field if they differ
       const formattedData = response.data.map(u => ({
         id: u.id,
-        name: u.full_name, // PHP returns full_name
+        name: u.full_name, 
         email: u.email,
         role: u.role,
         is_active: u.is_active
@@ -50,10 +54,8 @@ export default function UsersList({ onUserClick, onAddStaff, isDark }) {
     );
   }, [users, searchTerm]);
 
-  const secondaryTextColor = isDark ? 'text-slate-300' : 'text-slate-600';
-
   return (
-    <div className={`p-6 space-y-6 min-h-screen transition-colors duration-300 ${isDark ? 'bg-slate-900' : 'bg-slate-100'}`}>
+    <div className={`p-6 space-y-6 min-h-screen transition-colors duration-300`}>
       
       {/* HEADER */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -67,14 +69,19 @@ export default function UsersList({ onUserClick, onAddStaff, isDark }) {
         </div>
         <div className="flex gap-2">
            <button 
-             onClick={fetchUsers} // Manually refresh
+             onClick={fetchUsers} 
              className={`p-2.5 border rounded-xl transition-all ${
                isDark ? 'bg-slate-800 border-slate-700 hover:bg-slate-700' : 'bg-white border-gray-200 hover:bg-gray-100'
              }`}
            >
              <RefreshCw size={20} className={loading ? "animate-spin text-indigo-500" : (isDark ? "text-slate-500" : "text-gray-400")} />
            </button>
-           <Button onClick={onAddStaff} className="flex items-center gap-2 shadow-lg shadow-indigo-500/20 bg-indigo-600 border-none font-brand-body-bold uppercase tracking-widest text-xs">
+           
+           {/* Professional Router Navigation for Adding User */}
+           <Button 
+            onClick={() => navigate('/users/new')} 
+            className="flex items-center gap-2 shadow-lg shadow-indigo-500/20 bg-indigo-600 border-none font-brand-body-bold uppercase tracking-widest text-xs"
+           >
              <Plus size={18} /> Add Staff Member
            </Button>
         </div>
@@ -121,7 +128,8 @@ export default function UsersList({ onUserClick, onAddStaff, isDark }) {
                     className={`cursor-pointer transition-all group border-b last:border-none ${
                       isDark ? 'hover:bg-slate-800 border-slate-800' : 'hover:bg-indigo-50/30 border-gray-50'
                     }`}
-                    onClick={() => onUserClick(user.id)}
+                    // Professional Router Navigation for Detail view
+                    onClick={() => navigate(`/users/${user.id}`)}
                   >
                     <TableCell className="px-6 py-5">
                       <div className="flex items-center gap-4">

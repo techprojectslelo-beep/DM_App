@@ -7,59 +7,85 @@ import {
 const RightSidebar = ({ isOpen, onClose, post, currentUser, onSave, isDark }) => {
   const [draft, setDraft] = useState(null);
 
-  // Consistency with your global style preferences
-  const secondaryText = isDark ? 'text-slate-300' : 'text-slate-600';
-
+  // Sync state when post prop changes
   useEffect(() => {
     if (post) {
       setDraft({
         ...post,
-        work_by: post.work_by || "",
+        asset_link: post.asset_link || "", 
+        ready_by_id: post.ready_by_id || null,
+        confirmed_by_id: post.confirmed_by_id || null,
+        posted_by_id: post.posted_by_id || null,
+        readied_at: post.readied_at || null,
         confirmed_at: post.confirmed_at || null,
         posted_at: post.posted_at || null,
-        link: post.link || "",
-        is_ready: post.status === "Created" || post.status === "Confirmed" || post.status === "Posted"
+        // UI helper state
+        is_ready: !!post.readied_at 
       });
     }
   }, [post]);
 
   if (!post || !draft) return null;
 
-  const isAdmin = currentUser.role === 'admin' || currentUser.role === 'superuser';
+  // Logic Constants
+  const isAdmin = currentUser.role === 'admin' || currentUser.role === 'superuser' || currentUser.role === 'manager';
+  
+  // Helper to get MySQL compatible timestamp
+  const getNow = () => new Date().toISOString().slice(0, 19).replace('T', ' ');
 
-  const handleAddMyName = () => setDraft(prev => ({ ...prev, work_by: currentUser.name }));
-
-  const handleToggleReady = () => {
-    const newReadyState = !draft.is_ready;
+  // 1. CLAIM / ADD MY NAME
+  const handleAddMyName = () => {
     setDraft(prev => ({ 
       ...prev, 
-      is_ready: newReadyState,
-      status: newReadyState ? "Created" : "Pending",
-      work_completed_on: newReadyState ? new Date().toISOString() : null
+      ready_by_id: currentUser.id,
+      ready_by_name: currentUser.name || currentUser.full_name 
     }));
   };
 
+  // 2. MARK AS READY (The primary logic fix is here)
+  const handleToggleReady = () => {
+    setDraft(prev => {
+      const nextReadyState = !prev.is_ready;
+      return {
+        ...prev,
+        is_ready: nextReadyState,
+        readied_at: nextReadyState ? getNow() : null,
+        // If turning ON, ensure we have an ID. If turning OFF, we keep the ID for history 
+        // or set to null if your business logic requires it.
+        ready_by_id: nextReadyState ? (prev.ready_by_id || currentUser.id) : prev.ready_by_id
+      };
+    });
+  };
+
+  // 3. CONFIRM (Admin Only)
   const handleConfirm = () => {
     if (!isAdmin) return;
+    const now = getNow();
     setDraft(prev => ({
       ...prev,
-      status: "Confirmed",
-      confirmed_by: currentUser.name,
-      confirmed_at: new Date().toLocaleString()
+      confirmed_by_id: currentUser.id,
+      confirmed_at: now
     }));
   };
 
+  // 4. MARK POSTED
   const handlePosted = () => {
+    const now = getNow();
     setDraft(prev => ({
       ...prev,
-      status: "Posted",
-      posted_by: currentUser.name,
-      posted_at: new Date().toLocaleString()
+      posted_by_id: currentUser.id,
+      posted_at: now
     }));
   };
 
   const handleLinkChange = (e) => {
-    setDraft(prev => ({ ...prev, link: e.target.value }));
+    setDraft(prev => ({ ...prev, asset_link: e.target.value }));
+  };
+
+  const handleSaveInternal = () => {
+    // DEBUG: Check this console log to see if ready_by_id exists before it leaves React
+    console.log("Final payload being sent to PHP:", draft);
+    onSave(draft);
   };
 
   return (
@@ -102,7 +128,7 @@ const RightSidebar = ({ isOpen, onClose, post, currentUser, onSave, isDark }) =>
                 <span className="text-[9px] font-black text-indigo-100 uppercase tracking-widest mb-1">Post Category</span>
                 <div className="flex items-center gap-3 text-white">
                     <Tag size={20} />
-                    <span className="text-xl font-black uppercase tracking-tight">{draft.post_type}</span>
+                    <span className="text-xl font-black uppercase tracking-tight">{draft.type_name || draft.post_type}</span>
                 </div>
             </div>
 
@@ -112,7 +138,7 @@ const RightSidebar = ({ isOpen, onClose, post, currentUser, onSave, isDark }) =>
                 <span className={`text-[9px] font-black uppercase tracking-widest mb-1 text-center ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Due Date</span>
                 <div className={`flex items-center justify-center gap-2 font-bold text-sm ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
                     <Clock size={14} className="text-rose-500" />
-                    {new Date(draft.start).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                    {new Date(draft.task_due_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                 </div>
             </div>
           </div>
@@ -120,7 +146,7 @@ const RightSidebar = ({ isOpen, onClose, post, currentUser, onSave, isDark }) =>
           {/* ROW 3: TITLE */}
           <div className="mb-8 px-1">
             <h3 className={`text-lg font-bold leading-tight italic border-l-4 border-indigo-500 pl-4 ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
-              "{draft.post_name || "Untitled Task"}"
+              "{draft.post_title || "Untitled Task"}"
             </h3>
           </div>
 
@@ -130,11 +156,11 @@ const RightSidebar = ({ isOpen, onClose, post, currentUser, onSave, isDark }) =>
           }`}>
             <div className="flex flex-col">
               <span className={`text-[9px] font-black uppercase tracking-widest mb-2 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Assigned Worker</span>
-              {draft.work_by ? (
+              {draft.ready_by_id ? (
                 <div className={`flex items-center gap-2 text-sm font-black px-3 py-2 rounded-xl border ${
                   isDark ? 'bg-slate-900 border-slate-700 text-slate-100' : 'bg-white border-slate-100 text-slate-900'
                 }`}>
-                  <User size={14} className="text-indigo-500" /> {draft.work_by}
+                  <User size={14} className="text-indigo-500" /> {draft.ready_by_name || currentUser.name || "Assigned"}
                 </div>
               ) : (
                 <button onClick={handleAddMyName} className={`flex items-center gap-1.5 text-[10px] font-black uppercase px-4 py-2.5 rounded-xl transition-all border ${
@@ -161,7 +187,6 @@ const RightSidebar = ({ isOpen, onClose, post, currentUser, onSave, isDark }) =>
 
           {/* ACTION SECTION (Admin & Posting) */}
           <div className="grid grid-cols-1 gap-3 mb-6">
-            {/* ROW 5: CONFIRMATION */}
             <div className={`grid grid-cols-[140px_1fr_120px] items-center gap-4 p-4 rounded-2xl border ${
               isDark ? 'bg-slate-800 border-slate-800' : 'bg-white border-slate-200'
             }`}>
@@ -172,20 +197,19 @@ const RightSidebar = ({ isOpen, onClose, post, currentUser, onSave, isDark }) =>
               ) : <div className={`text-[10px] font-black uppercase pl-2 ${isDark ? 'text-slate-600' : 'text-slate-300'}`}>Admin Only</div>}
               <div className="flex justify-center">
                 <span className={`px-4 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest border ${
-                  draft.status === "Confirmed" || draft.status === "Posted" 
+                  draft.confirmed_at 
                   ? (isDark ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-emerald-50 text-emerald-600 border-emerald-200')
                   : (isDark ? 'bg-orange-500/10 text-orange-400 border-orange-500/20' : 'bg-orange-50 text-orange-600 border-orange-200')
                 }`}>
-                  {draft.status === "Confirmed" || draft.status === "Posted" ? "Confirmed" : "Pending"}
+                  {draft.confirmed_at ? "Confirmed" : "Pending"}
                 </span>
               </div>
               <div className="text-right flex flex-col">
                 <span className="text-[8px] font-bold text-slate-400 uppercase">Timestamp</span>
-                <span className={`text-[10px] font-black ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>{draft.confirmed_at?.split(',')[0] || "—"}</span>
+                <span className={`text-[10px] font-black ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>{draft.confirmed_at?.split(' ')[0] || "—"}</span>
               </div>
             </div>
 
-            {/* ROW 6: POSTED */}
             <div className={`grid grid-cols-[140px_1fr_120px] items-center gap-4 p-4 rounded-2xl border ${
               isDark ? 'bg-slate-800 border-slate-800' : 'bg-white border-slate-200'
             }`}>
@@ -194,16 +218,16 @@ const RightSidebar = ({ isOpen, onClose, post, currentUser, onSave, isDark }) =>
               </button>
               <div className="flex justify-center">
                 <span className={`px-4 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest border ${
-                  draft.status === "Posted" 
+                  draft.posted_at 
                   ? (isDark ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-emerald-50 text-emerald-600 border-emerald-200')
                   : (isDark ? 'bg-slate-900 border-slate-800 text-slate-500' : 'bg-slate-50 text-slate-400 border-slate-200')
                 }`}>
-                  {draft.status === "Posted" ? "Live" : "Not Live"}
+                  {draft.posted_at ? "Live" : "Not Live"}
                 </span>
               </div>
               <div className="text-right flex flex-col">
                 <span className="text-[8px] font-bold text-slate-400 uppercase">Timestamp</span>
-                <span className={`text-[10px] font-black ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>{draft.posted_at?.split(',')[0] || "—"}</span>
+                <span className={`text-[10px] font-black ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>{draft.posted_at?.split(' ')[0] || "—"}</span>
               </div>
             </div>
           </div>
@@ -218,7 +242,7 @@ const RightSidebar = ({ isOpen, onClose, post, currentUser, onSave, isDark }) =>
                     <LinkIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={14} />
                     <input 
                         type="text" 
-                        value={draft.link}
+                        value={draft.asset_link}
                         onChange={handleLinkChange}
                         placeholder="Paste Figma/Canva link here..."
                         className={`w-full pl-9 pr-4 py-3 border rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all ${
@@ -227,11 +251,11 @@ const RightSidebar = ({ isOpen, onClose, post, currentUser, onSave, isDark }) =>
                     />
                 </div>
                 <a 
-                    href={draft.link} 
+                    href={draft.asset_link} 
                     target="_blank" 
                     rel="noreferrer" 
                     className={`flex items-center justify-center px-4 rounded-xl transition-all border ${
-                        draft.link 
+                        draft.asset_link 
                         ? (isDark ? 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50')
                         : (isDark ? 'bg-slate-900 border-slate-800 text-slate-700 pointer-events-none' : 'bg-slate-50 text-slate-300 pointer-events-none')
                     }`}
@@ -244,7 +268,7 @@ const RightSidebar = ({ isOpen, onClose, post, currentUser, onSave, isDark }) =>
           {/* FOOTER ACTIONS */}
           <div className={`mt-auto pt-4 border-t flex justify-center ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
             <button 
-                onClick={() => onSave(draft)} 
+                onClick={handleSaveInternal} 
                 className="w-fit flex items-center justify-center gap-2 px-10 py-2.5 bg-blue-500/10 border-2 border-blue-500/80 text-blue-500 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all duration-300"
             >
                 <Save size={14}/> 

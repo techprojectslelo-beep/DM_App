@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useParams, useNavigate, useOutletContext } from "react-router-dom";
 import { 
   ArrowLeft, User, Mail, ShieldCheck, 
   Lock, UserPlus, Eye, EyeOff, Loader2, Edit3, X
@@ -6,8 +7,12 @@ import {
 import Button from "../components/ui/button/Button";
 import axiosClient from "../api/axiosClient";
 
-export default function UserDetail({ userId, onBack, isCreateMode = false, isDark }) {
-  // If we are creating, we start in edit mode. If viewing, we start locked.
+export default function UserDetail({ isCreateMode = false }) {
+  // PROFESSIONAL ROUTER HOOKS
+  const { id } = useParams(); // Gets ID from URL /users/:id
+  const navigate = useNavigate();
+  const { isDark } = useOutletContext(); // Inherit theme from Dashboard Outlet
+
   const [isEditing, setIsEditing] = useState(isCreateMode);
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -25,12 +30,16 @@ export default function UserDetail({ userId, onBack, isCreateMode = false, isDar
     { label: "Regular Staff", value: "staff" }
   ];
 
+  // Colors based on your specific requirements
+  const secondaryTextColor = isDark ? 'text-slate-300' : 'text-slate-600';
+
   useEffect(() => {
-    if (!isCreateMode && userId) {
+    // Only fetch if we have an ID and aren't in 'Create' mode
+    if (!isCreateMode && id) {
       const fetchUserData = async () => {
         setLoading(true);
         try {
-          const res = await axiosClient.get(`/users.php?id=${userId}`);
+          const res = await axiosClient.get(`/users.php?id=${id}`);
           const userData = Array.isArray(res.data) ? res.data[0] : res.data;
           setProfile({ ...userData, password: "" });
         } catch (err) {
@@ -41,7 +50,7 @@ export default function UserDetail({ userId, onBack, isCreateMode = false, isDar
       };
       fetchUserData();
     }
-  }, [userId, isCreateMode]);
+  }, [id, isCreateMode]);
 
   const handleSave = async () => {
     setLoading(true);
@@ -49,10 +58,10 @@ export default function UserDetail({ userId, onBack, isCreateMode = false, isDar
       if (isCreateMode) {
         await axiosClient.post('/users.php', profile);
       } else {
-        await axiosClient.put(`/users.php?id=${userId}`, profile);
+        await axiosClient.put(`/users.php?id=${id}`, profile);
       }
-      setIsEditing(false); // Lock fields again after success
-      if (isCreateMode) onBack(); 
+      setIsEditing(false);
+      navigate('/users'); // Go back to list after professional save
     } catch (err) {
       alert(err.response?.data?.message || "Operation failed");
     } finally {
@@ -60,29 +69,27 @@ export default function UserDetail({ userId, onBack, isCreateMode = false, isDar
     }
   };
 
-  const secondaryTextColor = isDark ? 'text-slate-300' : 'text-slate-600';
-
   if (loading && !isCreateMode) {
     return (
-      <div className="h-screen flex items-center justify-center">
+      <div className="h-full flex items-center justify-center">
         <Loader2 className="animate-spin text-indigo-500" size={40} />
       </div>
     );
   }
 
   return (
-    <div className={`p-6 md:p-12 min-h-screen w-full transition-colors duration-300 ${isDark ? 'bg-slate-900' : 'bg-slate-50'}`}>
+    <div className={`w-full transition-colors duration-300`}>
       <div className="max-w-5xl mx-auto flex flex-col">
         
         {/* Top Navigation */}
         <div className="mb-8 flex justify-between items-center">
           <button 
-            onClick={onBack} 
+            onClick={() => navigate('/users')} 
             className={`group flex items-center gap-2 transition-colors font-brand-heading uppercase text-[14px] tracking-widest ${
               isDark ? 'text-slate-300 hover:text-indigo-400' : 'text-slate-600 hover:text-indigo-600'
             }`}
           >
-            <ArrowLeft size={16} className="group-hover:-translate-x-1 transition-transform" /> Back
+            <ArrowLeft size={16} className="group-hover:-translate-x-1 transition-transform" /> Back to Staff
           </button>
 
           {!isCreateMode && (
@@ -94,18 +101,18 @@ export default function UserDetail({ userId, onBack, isCreateMode = false, isDar
                 : 'bg-indigo-500/10 border-indigo-500/50 text-indigo-500'
               } text-[10px] font-bold uppercase tracking-widest`}
             >
-              {isEditing ? <><X size={14} /> Cancel Edit</> : <><Edit3 size={14} /> Unlock Fields</>}
+              {isEditing ? <><X size={14} /> Cancel</> : <><Edit3 size={14} /> Edit Profile</>}
             </button>
           )}
         </div>
 
         <div className={`w-full border rounded-[40px] overflow-hidden flex flex-col md:flex-row transition-all duration-500 shadow-xl ${
-          isDark ? 'bg-slate-900 border-slate-800 shadow-black/40' : 'bg-white border-gray-200 shadow-[0_20px_50px_rgba(79,70,229,0.15)]'
+          isDark ? 'bg-slate-900 border-slate-700 shadow-black/40' : 'bg-white border-slate-200 shadow-[0_20px_50px_rgba(79,70,229,0.15)]'
         }`}>
           
           {/* Left Side Visual */}
           <div className={`w-full md:w-1/3 p-12 flex flex-col items-center justify-center transition-colors ${
-            isDark ? 'bg-gradient-to-b from-slate-800 to-indigo-950 text-slate-200' : 'bg-gradient-to-b from-indigo-50 to-indigo-200 text-slate-700'
+            isDark ? 'bg-gradient-to-b from-slate-800 to-slate-900 text-slate-200' : 'bg-gradient-to-b from-indigo-50 to-indigo-100 text-slate-700'
           }`}>
             <div className={`w-24 h-24 rounded-[2rem] flex items-center justify-center mb-6 border shadow-xl backdrop-blur-md transition-all ${
               isDark ? 'bg-white/5 border-white/10' : 'bg-white/40 border-white/40'
@@ -114,10 +121,10 @@ export default function UserDetail({ userId, onBack, isCreateMode = false, isDar
             </div>
             <div className="text-center">
               <h2 className={`text-2xl font-brand-heading uppercase tracking-tight ${isDark ? 'text-white' : 'text-indigo-900'}`}>
-                {isCreateMode ? "New Staff" : isEditing ? "Editing Mode" : "View Profile"}
+                {isCreateMode ? "New Member" : isEditing ? "Modify Staff" : "Staff Profile"}
               </h2>
-              <p className={`text-[12px] font-brand-heading uppercase tracking-[0.3em] mt-2 leading-relaxed ${isDark ? 'text-indigo-300/50' : 'text-indigo-700/60'}`}>
-                {isCreateMode ? "Grant system access" : profile.full_name}
+              <p className={`text-[12px] font-brand-heading uppercase tracking-[0.3em] mt-2 leading-relaxed ${isDark ? 'text-slate-400' : 'text-indigo-700/60'}`}>
+                {isCreateMode ? "System Access" : profile.full_name}
               </p>
             </div>
           </div>
@@ -156,7 +163,7 @@ export default function UserDetail({ userId, onBack, isCreateMode = false, isDar
               <div className="relative">
                 <DetailInput 
                   isDark={isDark}
-                  label={isCreateMode ? "Set Password" : "Reset Password"}
+                  label={isCreateMode ? "Set Password" : "Change Password"}
                   icon={Lock} 
                   type={showPassword ? "text" : "password"}
                   value={profile.password} 
@@ -168,7 +175,7 @@ export default function UserDetail({ userId, onBack, isCreateMode = false, isDar
                   <button 
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 bottom-4 text-gray-400 hover:text-indigo-500"
+                    className="absolute right-3 bottom-4 text-slate-400 hover:text-indigo-500"
                   >
                     {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                   </button>
@@ -183,7 +190,7 @@ export default function UserDetail({ userId, onBack, isCreateMode = false, isDar
                   disabled={loading}
                   className="w-full sm:w-auto px-12 py-4 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-brand-body-bold shadow-xl shadow-indigo-500/20 uppercase tracking-widest flex items-center gap-2"
                 >
-                  {loading ? "Saving..." : (isCreateMode ? "Create Member" : "Save Changes")}
+                  {loading ? "Saving..." : (isCreateMode ? "Create Member" : "Update Profile")}
                 </Button>
               )}
               
@@ -200,7 +207,7 @@ export default function UserDetail({ userId, onBack, isCreateMode = false, isDar
   );
 }
 
-// SHARED COMPONENTS
+// SHARED COMPONENTS (Inherit isDark from Props)
 function DetailInput({ label, icon: Icon, isDark, disabled, ...props }) {
   return (
     <div className="text-left w-full">
@@ -212,8 +219,8 @@ function DetailInput({ label, icon: Icon, isDark, disabled, ...props }) {
           disabled={disabled}
           className={`w-full rounded-xl pl-11 pr-4 py-4 text-[12px] font-brand-body-bold transition-all outline-none border ${
             isDark 
-            ? 'bg-slate-800 border-transparent text-white focus:bg-slate-950 focus:border-indigo-900' 
-            : 'bg-gray-50 border-transparent text-gray-900 focus:bg-white focus:border-indigo-100'
+            ? 'bg-slate-800 border-slate-700 text-white focus:bg-slate-950 focus:border-indigo-900' 
+            : 'bg-slate-50 border-slate-200 text-slate-900 focus:bg-white focus:border-indigo-100'
           } ${disabled ? 'opacity-50 cursor-not-allowed grayscale' : 'opacity-100'}`} 
         />
       </div>
@@ -233,8 +240,8 @@ function DropdownInput({ label, icon: Icon, options, value, onChange, disabled, 
           onChange={(e) => onChange(e.target.value)} 
           className={`w-full rounded-xl pl-11 pr-4 py-4 text-[12px] font-brand-body-bold appearance-none outline-none transition-all border ${
             isDark 
-            ? 'bg-slate-800 border-transparent text-white focus:bg-slate-950 focus:border-indigo-900' 
-            : 'bg-gray-50 border-transparent text-gray-900 focus:bg-white focus:border-indigo-100'
+            ? 'bg-slate-800 border-slate-700 text-white focus:bg-slate-950 focus:border-indigo-900' 
+            : 'bg-slate-50 border-slate-200 text-slate-900 focus:bg-white focus:border-indigo-100'
           } ${disabled ? 'opacity-50 cursor-not-allowed' : 'opacity-100'}`}
         >
           {options.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}

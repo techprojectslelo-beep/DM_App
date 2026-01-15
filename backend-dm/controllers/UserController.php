@@ -8,6 +8,12 @@ class UserController {
         $this->db = $pdo;
     }
 
+    // --- PRIVATE HELPER FOR ADMIN CHECK ---
+    private function isAdmin($role) {
+        // Ensuring the role is a string, trimmed of spaces, and lowercased
+        return strtolower(trim((string)$role)) === 'admin';
+    }
+
     // --- LOGIN ---
     public function login($email, $password) {
         $stmt = $this->db->prepare("SELECT id, full_name, role, password_hash FROM users WHERE email = ? AND is_active = 1");
@@ -27,22 +33,39 @@ class UserController {
         return ["status" => "error", "message" => "Invalid credentials", "code" => 401];
     }
 
-    // --- READ ALL ---
-    public function getAllUsers() {
+    // --- READ ALL (RESTRICTED) ---
+    public function getAllUsers($requestingRole) {
+        if (!$this->isAdmin($requestingRole)) {
+            return [
+                "status" => "error", 
+                "message" => "Unauthorized: Directory access restricted to Admins", 
+                "code" => 403,
+                "debug_received_role" => $requestingRole
+            ];
+        }
+
         $stmt = $this->db->query("SELECT id, full_name, email, role, is_active FROM users");
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    // --- READ ONE ---
-    public function getUserById($id) {
+    // --- READ ONE (RESTRICTED) ---
+    public function getUserById($id, $requestingRole) {
+        if (!$this->isAdmin($requestingRole)) {
+            return ["status" => "error", "message" => "Unauthorized", "code" => 403];
+        }
+
         $stmt = $this->db->prepare("SELECT id, full_name, email, role, is_active FROM users WHERE id = ?");
         $stmt->execute([$id]);
         $user = $stmt->fetch(PDO::FETCH_ASSOC);
         return $user ? $user : ["status" => "error", "message" => "User not found"];
     }
 
-    // --- CREATE ---
-    public function createUser($data) {
+    // --- CREATE (RESTRICTED) ---
+    public function createUser($data, $requestingRole) {
+        if (!$this->isAdmin($requestingRole)) {
+            return ["status" => "error", "message" => "Unauthorized", "code" => 403];
+        }
+
         $hashed = password_hash($data['password'], PASSWORD_DEFAULT);
         $stmt = $this->db->prepare("INSERT INTO users (full_name, email, role, password_hash, is_active) VALUES (?, ?, ?, ?, 1)");
         $stmt->execute([
@@ -54,10 +77,14 @@ class UserController {
         return ["status" => "success", "message" => "User added"];
     }
 
-    // --- UPDATE (Improved to handle passwords) ---
-    public function updateUser($data) {
+    // --- UPDATE (RESTRICTED) ---
+    public function updateUser($data, $requestingRole) {
+        if (!$this->isAdmin($requestingRole)) {
+            return ["status" => "error", "message" => "Unauthorized", "code" => 403];
+        }
+
         if (!isset($data['id'])) {
-            return ["status" => "error", "message" => "User ID is required for updates"];
+            return ["status" => "error", "message" => "User ID is required"];
         }
 
         $params = [
@@ -67,7 +94,6 @@ class UserController {
             $data['is_active'] ?? 1
         ];
 
-        // If password is provided, we include it in the query
         if (!empty($data['password'])) {
             $sql = "UPDATE users SET full_name = ?, email = ?, role = ?, is_active = ?, password_hash = ? WHERE id = ?";
             $params[] = password_hash($data['password'], PASSWORD_DEFAULT);
@@ -82,12 +108,15 @@ class UserController {
         return ["status" => "success", "message" => "User updated"];
     }
 
-    // --- DELETE (Soft Delete) ---
-    public function deleteUser($id) {
-        if (!$id) return ["status" => "error", "message" => "ID required"];
-        
+    // --- DELETE (RESTRICTED) ---
+    public function deleteUser($id, $requestingRole) {
+        if (!$this->isAdmin($requestingRole)) {
+            return ["status" => "error", "message" => "Unauthorized", "code" => 403];
+        }
+
         $stmt = $this->db->prepare("UPDATE users SET is_active = 0 WHERE id = ?");
         $stmt->execute([$id]);
         return ["status" => "success", "message" => "User deactivated"];
     }
 }
+?>
