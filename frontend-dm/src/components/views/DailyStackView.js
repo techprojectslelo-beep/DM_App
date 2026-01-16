@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   Plus, ChevronLeft, ChevronRight, Clock, Layout, 
   Calendar as CalendarIcon, List, Eye, ExternalLink, X,
@@ -10,7 +10,8 @@ import interactionPlugin from "@fullcalendar/interaction";
 import RightSidebar from './RightSidebar'; 
 import taskService from '../../api/taskService'; 
 
-const DailyStackView = ({ isSidebarOpen, isDark }) => {
+// Added onDataLoaded prop to sync with Sidebar
+const DailyStackView = ({ isSidebarOpen, isDark, activeFilters = {}, onDataLoaded }) => {
   const [viewMode, setViewMode] = useState('weekly'); 
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [selectedPost, setSelectedPost] = useState(null);
@@ -19,9 +20,14 @@ const DailyStackView = ({ isSidebarOpen, isDark }) => {
   const [loading, setLoading] = useState(true);
   const calendarRef = useRef(null);
 
-  const currentUser = { name: "Sarah J.", role: "staff" };
+  // Get current user from storage
+  const [currentUser, setCurrentUser] = useState(() => {
+    const savedUser = localStorage.getItem('user');
+    // Ensure we have a default if localStorage is empty
+    return savedUser ? JSON.parse(savedUser) : { name: "Yadnesh", role: "staff", id: 1 };
+  });
   
-  // Custom theme colors based on your preferences
+  // Custom theme colors (Slate 600 for light, Slate 300 for dark)
   const slateText = isDark ? 'text-slate-300' : 'text-slate-600';
 
   const getDerivedStatus = (post) => {
@@ -31,6 +37,61 @@ const DailyStackView = ({ isSidebarOpen, isDark }) => {
     return "Pending";
   };
 
+  // Dynamic Filtering Logic
+// Dynamic Filtering Logic
+  const filteredPosts = useMemo(() => {
+    return posts.filter(post => {
+      const p = post.extendedProps;
+      
+      // --- Status Filter (The "Bifurcation" Logic) ---
+      if (activeFilters.status?.length > 0) {
+        const s = activeFilters.status;
+        const isPosted = !!p.posted_at;
+        const isConfirmed = !!p.confirmed_at;
+        const isReady = !!p.readied_at;
+        const isClaimed = !!p.ready_by_id;
+
+        // Check against each selected filter checkbox
+        const matchStatus = s.some(filterValue => {
+          if (filterValue === "Posted") return isPosted;
+          if (filterValue === "Not Posted") return !isPosted;
+          
+          if (filterValue === "Confirmed") return isConfirmed;
+          if (filterValue === "Not Confirmed") return !isConfirmed;
+          
+          if (filterValue === "Ready") return isReady;
+          if (filterValue === "Not Ready") return !isReady;
+          
+          if (filterValue === "Claimed") return isClaimed;
+          if (filterValue === "Not Claimed") return !isClaimed;
+          
+          if (filterValue === "Pending") return !isReady && !isConfirmed && !isPosted;
+          
+          return false;
+        });
+
+        if (!matchStatus) return false;
+      }
+
+      // Filter by Brand
+      if (activeFilters.brand_name?.length > 0) {
+        if (!activeFilters.brand_name.includes(p.brand_name)) return false;
+      }
+
+      // Filter by Post Type
+      if (activeFilters.type_name?.length > 0) {
+        if (!activeFilters.type_name.includes(p.post_type)) return false;
+      }
+
+      // Filter by Staff
+      if (activeFilters.ready_by_name?.length > 0) {
+        if (!activeFilters.ready_by_name.includes(p.ready_by_name)) return false;
+      }
+
+      return true;
+    });
+  }, [posts, activeFilters]);
+
   const fetchTasks = async () => {
     setLoading(true);
     try {
@@ -39,16 +100,17 @@ const DailyStackView = ({ isSidebarOpen, isDark }) => {
       const data = await taskService.getTasksByMonth(month, year);
       
       const mappedPosts = data.map(task => {
-        // Essential: Extract clean YYYY-MM-DD for FullCalendar's monthly grid mapping
         const dateOnly = task.task_due_date.split('T')[0];
         
         return {
           id: task.id.toString(),
           title: task.brand_name || "Untitled", 
-          start: dateOnly, // Force placement on the correct day cell
-          allDay: true,    // Required for month-view visibility
+          start: dateOnly,
+          allDay: true,
           extendedProps: {
             ...task,
+            // Ensure ready_by_name is prioritized from the task object
+            ready_by_name: task.ready_by_name || (task.ready_by_id ? "Claimed" : null),
             actual_time: task.task_due_date,
             status: getDerivedStatus(task),
             post_type: task.type_name,
@@ -58,6 +120,8 @@ const DailyStackView = ({ isSidebarOpen, isDark }) => {
       });
       
       setPosts(mappedPosts);
+      // CRITICAL: Push data up to parent so Sidebar can see it
+      if (onDataLoaded) onDataLoaded(mappedPosts);
     } catch (err) {
       console.error("Failed to fetch tasks:", err);
     } finally {
@@ -69,7 +133,6 @@ const DailyStackView = ({ isSidebarOpen, isDark }) => {
     fetchTasks();
   }, [selectedDate.getMonth(), selectedDate.getFullYear()]);
 
-  // Handle resizing when switching modes or opening sidebar
   useEffect(() => {
     const timer = setTimeout(() => {
       const calendarApi = calendarRef.current?.getApi();
@@ -85,10 +148,33 @@ const DailyStackView = ({ isSidebarOpen, isDark }) => {
 
   const handleSaveChanges = async (updatedPost) => {
     try {
+        // Perform the API update
         await taskService.updateTask(updatedPost.id, updatedPost);
-        fetchTasks();
+        
+        // Immediately update local state so the UI reflects changes without a full refetch flicker
+        setPosts(prevPosts => {
+          const newPosts = prevPosts.map(p => {
+            if (p.id === updatedPost.id.toString()) {
+              return {
+                ...p,
+                extendedProps: {
+                  ...p.extendedProps,
+                  ...updatedPost,
+                  status: getDerivedStatus(updatedPost)
+                }
+              };
+            }
+            return p;
+          });
+          if (onDataLoaded) onDataLoaded(newPosts);
+          return newPosts;
+        });
+
         setIsSidebarDetailOpen(false);
+        // Optional: still fetch in background to sync with DB
+        fetchTasks(); 
     } catch (err) {
+        console.error("Save error:", err);
         alert("Failed to save changes");
     }
   };
@@ -253,8 +339,7 @@ const DailyStackView = ({ isSidebarOpen, isDark }) => {
             <div className="flex-1 overflow-y-auto pr-8 pt-0 custom-scrollbar ">
               <div className="space-y-8 w-full max-w-[1600px] mx-auto">
                 {(viewMode === 'today' ? [selectedDate] : weekDates).map((date) => {
-                  // Using extendedProps here as the data is mapped into that object now
-                  const dayPosts = posts.filter(p => new Date(p.extendedProps.actual_time).toDateString() === date.toDateString());
+                  const dayPosts = filteredPosts.filter(p => new Date(p.extendedProps.actual_time).toDateString() === date.toDateString());
                   const isToday = new Date().toDateString() === date.toDateString();
                   return (
                     <div key={date.toISOString()} className="space-y-4 pt-4">
@@ -292,9 +377,11 @@ const DailyStackView = ({ isSidebarOpen, isDark }) => {
                                     <div className="flex items-center gap-2">
                                       <div className={`flex items-center gap-1.5 ${isDark ? 'text-slate-500' : 'text-slate-600'}`}>
                                         <Pencil size={11} className="opacity-60" />
-                                        <span className={`text-[13px] font-black tracking-wide truncate ${slateText}`}>{p.created_by_name || "System"}</span>
+                                        <span className={`text-[13px] font-black tracking-wide truncate ${slateText}`}>
+                                          {p.ready_by_name || p.created_by_name || "Unassigned"}
+                                        </span>
                                       </div>
-                                      <StatusTag label={p.readied_at ? 'Ready' : 'Not Ready'} color={p.readied_at ? 'green' : 'orange'} isActive={true} />
+                                      <StatusTag label={p.ready_by_id ? 'Claimed' : 'Available'} color={p.ready_by_id ? 'green' : 'orange'} isActive={true} />
                                     </div>
                                   </div>
                                   <div className={`flex items-center gap-3 px-6 border-l transition-colors ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
@@ -318,7 +405,6 @@ const DailyStackView = ({ isSidebarOpen, isDark }) => {
               </div>
             </div>
           ) : (
-            /* MONTHLY VIEW - Now using unique key for forced re-render */
             <div className={`flex-1 overflow-y-auto p-4 transition-colors custom-scrollbar ${
               isDark ? 'bg-slate-900/40' : 'bg-slate-100'
             }`}>
@@ -334,12 +420,12 @@ const DailyStackView = ({ isSidebarOpen, isDark }) => {
 
               <div className="w-full max-w-[1600px] mx-auto bg-white dark:bg-slate-800/50 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800 p-6">
                 <FullCalendar
-                  key={`calendar-${viewMode}-${posts.length}`} // Key forces remount when data or view changes
+                  key={`calendar-${viewMode}-${filteredPosts.length}`} 
                   ref={calendarRef}
                   plugins={[daygridPlugin, interactionPlugin]}
                   initialView="dayGridMonth"
                   initialDate={selectedDate}
-                  events={posts}
+                  events={filteredPosts}
                   height="720px" 
                   dayMaxEvents={3}
                   headerToolbar={false}

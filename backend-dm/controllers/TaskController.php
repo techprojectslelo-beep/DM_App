@@ -52,36 +52,40 @@ class TaskController {
         return $res ? $this->conn->lastInsertId() : false;
     }
 
-    /**
-     * FETCH BY MONTH
-     */
-    public function getTasksByMonth($month, $year) {
-        $sql = "SELECT t.*, b.brand_name, pt.type_name 
-                FROM tasks t
-                LEFT JOIN brands b ON t.brand_id = b.id
-                LEFT JOIN post_types pt ON t.post_type_id = pt.id
-                WHERE MONTH(t.task_due_date) = ? AND YEAR(t.task_due_date) = ?
-                ORDER BY t.task_due_date ASC, t.created_at ASC";
-        
-        $stmt = $this->conn->prepare($sql);
-        $stmt->execute([$month, $year]);
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
-    }
+/**
+ * FETCH BY MONTH
+ */
+public function getTasksByMonth($month, $year) {
+    // UPDATED: Changed u.name to u.full_name
+    $sql = "SELECT t.*, b.brand_name, pt.type_name, u.full_name as ready_by_name 
+            FROM tasks t
+            LEFT JOIN brands b ON t.brand_id = b.id
+            LEFT JOIN post_types pt ON t.post_type_id = pt.id
+            LEFT JOIN users u ON t.ready_by_id = u.id
+            WHERE MONTH(t.task_due_date) = ? AND YEAR(t.task_due_date) = ?
+            ORDER BY t.task_due_date ASC, t.created_at ASC";
+    
+    $stmt = $this->conn->prepare($sql);
+    $stmt->execute([$month, $year]);
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
 
-    /**
-     * FETCH BY DATE
-     */
-    public function getTasksByDate($date) {
-        $sql = "SELECT t.*, b.brand_name, pt.type_name 
-                FROM tasks t
-                LEFT JOIN brands b ON t.brand_id = b.id
-                LEFT JOIN post_types pt ON t.post_type_id = pt.id
-                WHERE t.task_due_date = ?
-                ORDER BY t.created_at ASC";
-        $stmt = $this->conn->prepare($sql);
-        $stmt->execute([$date]);
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
-    }
+/**
+ * FETCH BY DATE
+ */
+public function getTasksByDate($date) {
+    // UPDATED: Changed u.name to u.full_name
+    $sql = "SELECT t.*, b.brand_name, pt.type_name, u.full_name as ready_by_name 
+            FROM tasks t
+            LEFT JOIN brands b ON t.brand_id = b.id
+            LEFT JOIN post_types pt ON t.post_type_id = pt.id
+            LEFT JOIN users u ON t.ready_by_id = u.id
+            WHERE t.task_due_date = ?
+            ORDER BY t.created_at ASC";
+    $stmt = $this->conn->prepare($sql);
+    $stmt->execute([$date]);
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
 
     /**
      * UPDATE: Update content or status timestamps

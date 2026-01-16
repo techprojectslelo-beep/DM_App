@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Table,
@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import enquiryService from "../api/enquiryService";
 
-export default function ClientList({ isDark }) {
+export default function ClientList({ isDark, activeFilters, onDataLoaded }) {
   const navigate = useNavigate();
   const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -29,6 +29,8 @@ export default function ClientList({ isDark }) {
         setLoading(true);
         const data = await enquiryService.getAllEnquiries();
         setClients(data);
+        // Sync with App.js for Sidebar visibility
+        if (onDataLoaded) onDataLoaded(data);
       } catch (error) {
         console.error("Failed to fetch enquiries:", error);
       } finally {
@@ -43,7 +45,54 @@ export default function ClientList({ isDark }) {
     fetchEnquiries();
     window.addEventListener("scroll", handleScroll);
     return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
+  }, [onDataLoaded]);
+
+  // FILTER LOGIC
+// FILTER LOGIC
+// FILTER LOGIC
+  const filteredData = useMemo(() => {
+    return clients.filter(item => {
+      // 1. UNIVERSAL GLOBAL SEARCH
+      // This looks through EVERY field you listed: id, name, email, grade, location, etc.
+      const globalSearchValue = activeFilters?.global_search?.[0]?.toLowerCase() || "";
+      
+      const matchesGlobal = !globalSearchValue || [
+        item.id,
+        item.enquirer_name,
+        item.enq_email,
+        item.enq_number,
+        item.enquirer_company,
+        item.college_name,
+        item.course_taken,
+        item.passing_grade,
+        item.job_title,
+        item.job_company_location,
+        item.job_field,
+        item.enquiry_status,
+        item.budget_range,
+        item.brand_name, // Search by the name instead of just ID for better UX
+        item.service_name
+      ].some(val => 
+        String(val || "").toLowerCase().includes(globalSearchValue)
+      );
+
+      // 2. CATEGORICAL FILTERS (Sidebar Checkboxes)
+      // These remain specific so users can "Drill Down" after searching
+      const matchesBrand = !activeFilters?.brand_name?.length || 
+                           activeFilters.brand_name.includes(item.brand_name);
+      
+      const matchesService = !activeFilters?.service_name?.length || 
+                             activeFilters.service_name.includes(item.service_name);
+      
+      const matchesStatus = !activeFilters?.enquiry_status?.length || 
+                            activeFilters.enquiry_status.includes(item.enquiry_status);
+      
+      const matchesBudget = !activeFilters?.budget_range?.length || 
+                            activeFilters.budget_range.includes(item.budget_range);
+
+      return matchesGlobal && matchesBrand && matchesService && matchesStatus && matchesBudget;
+    });
+  }, [clients, activeFilters]);
 
   const scrollToTop = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -113,7 +162,7 @@ export default function ClientList({ isDark }) {
             <TableBody>
               {loading ? (
                  <TableRow><TableCell colSpan={4} className="py-20 text-center uppercase text-[10px] tracking-widest opacity-50">Loading Enquiries...</TableCell></TableRow>
-              ) : clients.length > 0 ? clients.map((client) => {
+              ) : filteredData.length > 0 ? filteredData.map((client) => {
                 const statusConfig = getStatusConfig(client.enquiry_status);
                 return (
                   <TableRow 
@@ -167,7 +216,7 @@ export default function ClientList({ isDark }) {
                     <TableCell colSpan={4} className="py-20 text-center">
                        <div className="flex flex-col items-center gap-2 opacity-40">
                           <UserCircle size={40} className={isDark ? 'text-slate-500' : 'text-gray-400'} />
-                          <p className={`text-[10px] font-brand-heading uppercase tracking-widest ${secondaryTextColor}`}>No enquiry records found</p>
+                          <p className={`text-[10px] font-brand-heading uppercase tracking-widest ${secondaryTextColor}`}>No records matching filters</p>
                        </div>
                     </TableCell>
                 </TableRow>

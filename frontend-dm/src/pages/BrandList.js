@@ -5,40 +5,33 @@ import Button from "../components/ui/button/Button";
 import { Plus, Search, Building2, ChevronRight, RefreshCw, Loader2, AlertCircle } from "lucide-react";
 import brandService from "../api/brandService"; 
 
-export default function InternalEntitiesList({ isDark }) {
+export default function InternalEntitiesList({ isDark, activeFilters, onDataLoaded }) {
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState("");
   const [companies, setCompanies] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Theme preference: slate 300 for dark text, slate 600 for light text
   const secondaryTextColor = isDark ? 'text-slate-300' : 'text-slate-600';
 
-const fetchBrands = async () => {
+  const fetchBrands = async () => {
     setLoading(true);
     setError(null);
     try {
-      // res IS the array because brandService already does "return response.data"
       const res = await brandService.getAllBrands(); 
-      
-      console.log("Brands Data Received:", res);
-
-      // We use 'res' directly here. 
-      // Before, you were doing 'const data = res.data', which resulted in 'undefined'.
       if (Array.isArray(res)) {
         setCompanies(res);
+        // Sync data up to App.js so Sidebar can see the brand names
+        if (onDataLoaded) onDataLoaded(res);
       } else {
-        console.error("Payload is not an array:", res);
         setCompanies([]);
       }
     } catch (err) {
-      console.error("Fetch Error:", err);
       setError(err.message || "Failed to fetch entities");
     } finally {
       setLoading(false);
     }
-};
+  };
 
   useEffect(() => {
     fetchBrands();
@@ -46,10 +39,24 @@ const fetchBrands = async () => {
 
   const filtered = useMemo(() => {
     return companies.filter((c) => {
-      const name = c.brand_name || ""; 
-      return name.toLowerCase().includes(searchTerm.toLowerCase());
+      // 1. Local Search Bar Filter
+      const matchesSearch = (c.brand_name || "").toLowerCase().includes(searchTerm.toLowerCase());
+      
+      // 2. Sidebar Searchable Brand Name Filter
+      const sidebarBrandNames = activeFilters?.brand_name || [];
+      const matchesSidebarName = sidebarBrandNames.length === 0 || sidebarBrandNames.includes(c.brand_name);
+
+      // 3. Sidebar Entity Status Filter (Active/Inactive)
+      const statusFilters = activeFilters?.brand_status || []; // matched to id in filterConfig
+      let matchesStatus = true;
+      if (statusFilters.length > 0) {
+        const itemStatus = c.is_active == 1 ? "Active" : "Inactive";
+        matchesStatus = statusFilters.includes(itemStatus);
+      }
+
+      return matchesSearch && matchesSidebarName && matchesStatus;
     });
-  }, [companies, searchTerm]);
+  }, [companies, searchTerm, activeFilters]);
 
   return (
     <div className={`p-6 space-y-6 min-h-screen transition-colors duration-300 ${isDark ? 'bg-slate-900' : 'bg-slate-100'}`}>
