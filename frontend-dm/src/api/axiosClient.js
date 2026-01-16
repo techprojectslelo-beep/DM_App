@@ -8,34 +8,44 @@ const axiosClient = axios.create({
   withCredentials: true 
 });
 
-// --- THE MISSING PART: REQUEST INTERCEPTOR ---
-// This runs BEFORE the request leaves React
+/**
+ * PRODUCTION AUTH INTERCEPTOR
+ * This attaches the secure token to every single request automatically.
+ */
 axiosClient.interceptors.request.use(
   (config) => {
-    // FORCE LOG THE FULL URL
-    console.log("AXIOS SENDING TO:", config.baseURL + config.url);
+    // 1. Get the token we saved during login
+    const token = localStorage.getItem('token');
     
-    const userData = localStorage.getItem('user');
-    if (userData) {
-      try {
-        const user = JSON.parse(userData);
-        config.headers['X-User-Role'] = (user.role || 'staff').toLowerCase();
-      } catch (e) {
-        console.error("JSON Parse error in interceptor:", e);
-      }
+    // 2. If it exists, attach it as a Bearer token
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
     }
+
+    console.log(`🚀 [API Request] ${config.method?.toUpperCase()} -> ${config.url}`);
     return config;
   },
-  (error) => Promise.reject(error)
+  (error) => {
+    return Promise.reject(error);
+  }
 );
 
-// Your existing Response Interceptor
 axiosClient.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    return response;
+  },
   (error) => {
-    if (error.response && error.response.status === 401) {
-      console.error("Unauthorized! Redirecting...");
+    // 3. Handle security failures globally
+    if (error.response) {
+      const status = error.response.status;
+      
+      if (status === 401 || status === 403) {
+        console.error("🛑 Security Block: Unauthorized or Invalid Token.");
+        // Optional: Redirect to login if the token is dead
+        // window.location.href = '/login';
+      }
     }
+    
     return Promise.reject(error);
   }
 );

@@ -263,7 +263,11 @@ const Sidebar = ({ isOpen, setIsOpen, isDark, rawData = [], onFilterChange }) =>
                           
                           {/* Only show options list if it's NOT the global search bar */}
                           {section.id !== 'global_search' && (
-                            <div className="space-y-3 max-h-60 overflow-y-auto custom-sidebar-scroll pr-1">
+                            <div className={`space-y-3 pr-1 ${
+  (section.id === 'status' || section.id === 'is_active') 
+    ? 'h-fit' 
+    : 'max-h-40 overflow-y-auto custom-sidebar-scroll'
+}`}>
                               {filterOptions[section.id]
                                 ?.filter(opt => String(opt).toLowerCase().includes(searchQuery.toLowerCase()))
                                 .map((option) => (

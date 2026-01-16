@@ -9,7 +9,7 @@ import {
 import { 
   ArrowLeft, Calendar, User, Building2, Mail, Phone, Lock, Unlock, 
   Save, Plus, MessageSquare, Clock, ChevronDown, ChevronUp, Pencil, Trash2,
-  Briefcase, GraduationCap, Wallet, Globe, Tag, X, Activity, Landmark, Award
+  Briefcase, GraduationCap, Wallet, Globe, Tag, X, Activity, Landmark, Award, AlertCircle
 } from "lucide-react";
 import Button from "../components/ui/button/Button";
 
@@ -18,13 +18,11 @@ export default function ClientDetail({ isDark }) {
   const navigate = useNavigate();
   const isNewClient = clientId === 'new';
   
-  // UI States
   const [isEditing, setIsEditing] = useState(isNewClient);
   const [isExpanded, setIsExpanded] = useState(false);
-  const [loading, setLoading] = useState(!isNewClient);
+  const [loading, setLoading] = useState(true);
   const [showConvForm, setShowConvForm] = useState(false);
   
-  // Data States
   const [brands, setBrands] = useState([]);
   const [filteredServices, setFilteredServices] = useState([]);
   const [conversations, setConversations] = useState([]);
@@ -35,49 +33,59 @@ export default function ClientDetail({ isDark }) {
     enquirer_name: "", enq_email: "", enq_number: "", enquirer_company: "",
     college_name: "", course_taken: "", passing_grade: "", job_title: "",
     job_company_location: "", job_field: "", brand_id: "", service_id: "",
-    enquiry_status: "just connected", budget_range: "", next_follow_up: ""
+    enquiry_status: "just connected", budget_range: "", priority: "medium", next_follow_up: ""
   });
 
-  // Theme-based colors (Slate 300 for Dark, Slate 600 for Light)
   const secondaryText = isDark ? 'text-slate-300' : 'text-slate-600';
 
+  // REDUCED API LOGIC: Parallel Fetching
   useEffect(() => {
-    fetchMetadata();
-    if (!isNewClient) loadClientData();
-  }, [clientId]);
+    const initializeData = async () => {
+      try {
+        setLoading(true);
+        // Fire Metadata and Profile in parallel to save time and requests
+        const [brandsData, clientData] = await Promise.all([
+          brandService.getAllBrands(),
+          !isNewClient ? enquiryService.getEnquiryDetail(clientId) : Promise.resolve(null)
+        ]);
 
-  // Synchronize Services when Brand changes
-  useEffect(() => {
-    const fetchServices = async () => {
-      if (profile.brand_id) {
-        try {
-          const brandDetails = await brandService.getBrandDetail(profile.brand_id);
-          setFilteredServices(brandDetails.services || []);
-        } catch (e) { console.error("Service fetch failed", e); }
-      } else {
-        setFilteredServices([]);
+        if (brandsData) setBrands(brandsData);
+
+        if (clientData) {
+          const profileData = clientData.profile || clientData;
+          setProfile(profileData);
+          setConversations(clientData.conversations || []);
+
+          // Fetch services immediately if brand exists, avoiding a second useEffect trigger
+          if (profileData.brand_id) {
+            const brandDetails = await brandService.getBrandDetail(profileData.brand_id);
+            setFilteredServices(brandDetails.services || []);
+          }
+        }
+      } catch (error) {
+        console.error("Initialization failed", error);
+        toast.error("Failed to load dossier");
+      } finally {
+        setLoading(false);
       }
     };
-    fetchServices();
-  }, [profile.brand_id]);
 
-  const fetchMetadata = async () => {
-    try {
-      const b = await brandService.getAllBrands();
-      setBrands(b || []);
-    } catch (e) { console.error("Metadata fetch failed", e); }
-  };
+    initializeData();
+  }, [clientId, isNewClient]);
 
-  const loadClientData = async () => {
-    try {
-      setLoading(true);
-      const data = await enquiryService.getEnquiryDetail(clientId);
-      if (data) {
-        setProfile(data.profile || data); 
-        setConversations(data.conversations || []);
+  // MANUAL TRIGGER: Only fetch services on user interaction
+  const handleBrandChange = async (brandId) => {
+    setProfile({ ...profile, brand_id: brandId, service_id: "" });
+    if (brandId) {
+      try {
+        const details = await brandService.getBrandDetail(brandId);
+        setFilteredServices(details.services || []);
+      } catch (e) {
+        console.error("Service fetch failed", e);
       }
-    } catch (error) { toast.error("Error loading data"); }
-    finally { setLoading(false); }
+    } else {
+      setFilteredServices([]);
+    }
   };
 
   const handleSaveProfile = async () => {
@@ -91,23 +99,41 @@ export default function ClientDetail({ isDark }) {
         await enquiryService.updateEnquiry(clientId, profile);
         toast.success('Updated!', { id: loadingToast });
         setIsEditing(false);
-        loadClientData();
       }
     } catch (error) { toast.error("Save failed", { id: loadingToast }); }
   };
 
   const handleSaveConversation = async () => {
+    const loadId = toast.loading("Saving interaction...");
     try {
       if (editingConvId) {
         await enquiryService.updateConversation(clientId, editingConvId, newConv);
+        toast.success("Record Updated", { id: loadId });
       } else {
-        await enquiryService.addConversation({ ...newConv, enquiry_id: clientId, logged_by: 'Admin' });
+        const response = await enquiryService.addConversation({ ...newConv, enquiry_id: clientId, logged_by: 'Admin' });
+        toast.success("Interaction Logged", { id: loadId });
       }
       setShowConvForm(false);
       setEditingConvId(null);
-      loadClientData();
-      toast.success("Interaction Logged");
-    } catch (e) { toast.error("Failed to save entry"); }
+      // Refresh local conversations state instead of full page reload if your API returns the new object
+      const updatedData = await enquiryService.getEnquiryDetail(clientId);
+      setConversations(updatedData.conversations || []);
+    } catch (e) { 
+      toast.error("Failed to save entry", { id: loadId }); 
+    }
+  };
+
+  const handleDeleteConversation = async () => {
+    if (!editingConvId) return;
+    if (!window.confirm("Are you sure you want to permanently delete this interaction?")) return;
+    const loadId = toast.loading("Purging interaction record...");
+    try {
+      await enquiryService.deleteConversation(editingConvId);
+      toast.success("Record Deleted", { id: loadId });
+      setConversations(conversations.filter(c => c.c_id !== editingConvId));
+      setShowConvForm(false);
+      setEditingConvId(null);
+    } catch (e) { toast.error("Delete failed", { id: loadId }); }
   };
 
   const openEditConv = (conv) => {
@@ -123,7 +149,7 @@ export default function ClientDetail({ isDark }) {
       <Toaster position="top-right" />
 
       {/* Hero Header */}
-      <div className="relative flex flex-col items-center justify-center min-h-[140px] max-w-7xl mx-auto w-full">
+      <div className="relative flex flex-col items-center justify-center min-h-[100px] max-w-7xl mx-auto w-full ">
         <div className="absolute left-0 top-1/2 -translate-y-1/2">
           <button onClick={() => navigate('/enquiry')} className={`flex items-center gap-2 font-brand-heading uppercase text-[12px] tracking-widest ${secondaryText} hover:text-indigo-500 transition-colors`}>
             <ArrowLeft size={16} /> Dashboard
@@ -153,11 +179,10 @@ export default function ClientDetail({ isDark }) {
         </div>
       </div>
 
-      {/* Main Profile Info Block */}
+      {/* Profile Card */}
       <div className={`max-w-7xl mx-auto rounded-[32px] border transition-all duration-500 shadow-sm ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-200'}`}>
         <div className="p-10">
           {isEditing ? (
-            /* ALL FIELDS IN EDIT MODE */
             <div className="space-y-10 animate-in fade-in duration-300">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <DetailInput label="Full Name" icon={User} isDark={isDark} value={profile.enquirer_name} onChange={(v) => setProfile({...profile, enquirer_name: v})} />
@@ -165,7 +190,6 @@ export default function ClientDetail({ isDark }) {
                 <DetailInput label="Phone" icon={Phone} isDark={isDark} value={profile.enq_number} onChange={(v) => setProfile({...profile, enq_number: v})} />
                 <DetailInput label="Company" icon={Building2} isDark={isDark} value={profile.enquirer_company} onChange={(v) => setProfile({...profile, enquirer_company: v})} />
               </div>
-              
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 pt-8 border-t border-slate-100 dark:border-slate-800">
                 <DetailInput label="College" icon={GraduationCap} isDark={isDark} value={profile.college_name} onChange={(v) => setProfile({...profile, college_name: v})} />
                 <DetailInput label="Course" icon={Tag} isDark={isDark} value={profile.course_taken} onChange={(v) => setProfile({...profile, course_taken: v})} />
@@ -176,28 +200,35 @@ export default function ClientDetail({ isDark }) {
                 <DetailInput label="Budget Range" icon={Wallet} isDark={isDark} value={profile.budget_range} onChange={(v) => setProfile({...profile, budget_range: v})} />
                 <DetailInput label="Follow Up" type="date" icon={Calendar} isDark={isDark} value={profile.next_follow_up} onChange={(v) => setProfile({...profile, next_follow_up: v})} />
               </div>
-
-              {/* BRAND & SERVICE SYNC IN EDIT MODE */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-8 border-t border-slate-100 dark:border-slate-800">
-                <div className="space-y-1.5">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 pt-8 border-t border-slate-100 dark:border-slate-800">
+                 <div className="space-y-1.5">
+                    <label className={`text-[10px] font-brand-heading uppercase tracking-widest ml-1 ${secondaryText}`}>Enquiry Status</label>
+                    <select value={profile.enquiry_status} onChange={(e) => setProfile({...profile, enquiry_status: e.target.value})} className={`w-full rounded-2xl px-4 py-3 text-[12px] font-brand-body-bold outline-none border ${isDark ? 'bg-slate-950 border-slate-800 text-white' : 'bg-slate-50 border-slate-200'}`}>
+                        <option value="just connected">Just Connected</option>
+                        <option value="follow up">Follow Up</option>
+                        <option value="proposal sent">Proposal Sent</option>
+                        <option value="converted">Converted</option>
+                        <option value="lost">Lost</option>
+                    </select>
+                 </div>
+                 <div className="space-y-1.5">
+                    <label className={`text-[10px] font-brand-heading uppercase tracking-widest ml-1 ${secondaryText}`}>Lead Priority</label>
+                    <select value={profile.priority} onChange={(e) => setProfile({...profile, priority: e.target.value})} className={`w-full rounded-2xl px-4 py-3 text-[12px] font-brand-body-bold outline-none border ${isDark ? 'bg-slate-950 border-slate-800 text-white' : 'bg-slate-50 border-slate-200'}`}>
+                        <option value="low">Low</option>
+                        <option value="medium">Medium</option>
+                        <option value="high">High</option>
+                    </select>
+                 </div>
+                 <div className="space-y-1.5">
                   <label className={`text-[10px] font-brand-heading uppercase tracking-widest ml-1 ${secondaryText}`}>Brand Association</label>
-                  <select 
-                    value={profile.brand_id} 
-                    onChange={(e) => setProfile({...profile, brand_id: e.target.value, service_id: ""})}
-                    className={`w-full rounded-2xl px-4 py-3 text-[12px] font-brand-body-bold outline-none border ${isDark ? 'bg-slate-950 border-slate-800 text-white' : 'bg-slate-50 border-slate-200'}`}
-                  >
+                  <select value={profile.brand_id} onChange={(e) => handleBrandChange(e.target.value)} className={`w-full rounded-2xl px-4 py-3 text-[12px] font-brand-body-bold outline-none border ${isDark ? 'bg-slate-950 border-slate-800 text-white' : 'bg-slate-50 border-slate-200'}`}>
                     <option value="">Select Brand</option>
                     {brands.map(b => <option key={b.id} value={b.id}>{b.brand_name}</option>)}
                   </select>
                 </div>
                 <div className="space-y-1.5">
                   <label className={`text-[10px] font-brand-heading uppercase tracking-widest ml-1 ${secondaryText}`}>Target Service</label>
-                  <select 
-                    value={profile.service_id} 
-                    disabled={!profile.brand_id}
-                    onChange={(e) => setProfile({...profile, service_id: e.target.value})}
-                    className={`w-full rounded-2xl px-4 py-3 text-[12px] font-brand-body-bold outline-none border disabled:opacity-30 ${isDark ? 'bg-slate-950 border-slate-800 text-white' : 'bg-slate-50 border-slate-200'}`}
-                  >
+                  <select value={profile.service_id} disabled={!profile.brand_id} onChange={(e) => setProfile({...profile, service_id: e.target.value})} className={`w-full rounded-2xl px-4 py-3 text-[12px] font-brand-body-bold outline-none border disabled:opacity-30 ${isDark ? 'bg-slate-950 border-slate-800 text-white' : 'bg-slate-50 border-slate-200'}`}>
                     <option value="">Select Service</option>
                     {filteredServices.map(s => <option key={s.id} value={s.id}>{s.service_name}</option>)}
                   </select>
@@ -205,13 +236,12 @@ export default function ClientDetail({ isDark }) {
               </div>
             </div>
           ) : (
-            /* LOCKED STATE WITH EXPAND/COLLAPSE */
             <div className="space-y-8 animate-in fade-in duration-500">
               <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-y-10 gap-x-12">
                 <InfoItem label="Email Address" value={profile.enq_email} icon={Mail} secondaryText={secondaryText} isDark={isDark} />
                 <InfoItem label="Phone Number" value={profile.enq_number} icon={Phone} secondaryText={secondaryText} isDark={isDark} />
                 <InfoItem label="Status" value={profile.enquiry_status} icon={Activity} secondaryText={secondaryText} isDark={isDark} isStatus />
-                <InfoItem label="Next Follow Up" value={profile.next_follow_up} icon={Calendar} secondaryText={secondaryText} isDark={isDark} />
+                <InfoItem label="Priority" value={profile.priority} icon={AlertCircle} secondaryText={secondaryText} isDark={isDark} />
               </div>
 
               {isExpanded && (
@@ -223,7 +253,9 @@ export default function ClientDetail({ isDark }) {
                   <InfoItem label="Job Field" value={profile.job_field} icon={Activity} secondaryText={secondaryText} isDark={isDark} />
                   <InfoItem label="Location" value={profile.job_company_location} icon={Globe} secondaryText={secondaryText} isDark={isDark} />
                   <InfoItem label="Budget" value={profile.budget_range} icon={Wallet} secondaryText={secondaryText} isDark={isDark} />
+                  <InfoItem label="Follow Up" value={profile.next_follow_up} icon={Calendar} secondaryText={secondaryText} isDark={isDark} />
                   <InfoItem label="Assigned Brand" value={brands.find(b => b.id == profile.brand_id)?.brand_name} icon={Landmark} secondaryText={secondaryText} isDark={isDark} />
+                  <InfoItem label="Target Service" value={filteredServices.find(s => s.id == profile.service_id)?.service_name} icon={Briefcase} secondaryText={secondaryText} isDark={isDark} />
                 </div>
               )}
 
@@ -237,8 +269,8 @@ export default function ClientDetail({ isDark }) {
         </div>
       </div>
 
-      {/* Conversations Section */}
-      <div className="max-w-7xl mx-auto space-y-4">
+      {/* Interactions Timeline */}
+      <div className="max-w-7xl mx-auto space-y-4 pb-12">
         <div className="flex items-center justify-between px-4">
             <h3 className={`font-brand-heading uppercase text-[11px] tracking-[0.2em] ${secondaryText}`}>Interaction Timeline</h3>
             <Button onClick={() => { setEditingConvId(null); setNewConv({c_title: "", interaction_date: "", c_desc: ""}); setShowConvForm(true); }} className="rounded-xl py-2 px-6 text-[10px] uppercase tracking-widest font-brand-heading shadow-md shadow-indigo-500/10">
@@ -256,11 +288,15 @@ export default function ClientDetail({ isDark }) {
               </div>
               <div className="md:col-span-2 flex justify-between items-center">
                   {editingConvId ? (
-                    <button className="text-red-500 text-[10px] font-brand-heading uppercase flex items-center gap-1 hover:opacity-70"><Trash2 size={14}/> Purge Record</button>
+                    <button onClick={handleDeleteConversation} className="text-red-500 text-[10px] font-brand-heading uppercase flex items-center gap-1 hover:opacity-70 transition-all">
+                      <Trash2 size={14}/> Purge Record
+                    </button>
                   ) : <div/>}
                   <div className="flex gap-3">
                     <Button variant="ghost" className="text-[10px] uppercase font-brand-heading tracking-widest" onClick={() => setShowConvForm(false)}>Cancel</Button>
-                    <Button onClick={handleSaveConversation} className="text-[10px] uppercase font-brand-heading tracking-widest px-8">Save Record</Button>
+                    <Button onClick={handleSaveConversation} className="text-[10px] uppercase font-brand-heading tracking-widest px-8">
+                      {editingConvId ? "Update Record" : "Save Record"}
+                    </Button>
                   </div>
               </div>
             </div>
@@ -268,23 +304,29 @@ export default function ClientDetail({ isDark }) {
         )}
 
         <div className={`rounded-[32px] border overflow-hidden ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-100'}`}>
-          <Table>
+          <Table className="table-fixed w-full"> 
             <TableHeader className={isDark ? 'bg-slate-800/50' : 'bg-slate-50'}>
               <TableRow>
-                <TableCell isHeader className="px-10 py-5 text-[11px] font-brand-heading uppercase tracking-widest text-indigo-500">Context</TableCell>
-                <TableCell isHeader className="px-10 py-5 text-[11px] font-brand-heading uppercase tracking-widest text-indigo-500">Summary</TableCell>
-                <TableCell isHeader className="px-10 py-5 text-right text-[11px] font-brand-heading uppercase tracking-widest text-indigo-500">Action</TableCell>
+                <TableCell isHeader className="px-10 py-5 text-[11px] font-brand-heading uppercase tracking-widest text-indigo-500 w-[25%]">Context</TableCell>
+                <TableCell isHeader className="px-10 py-5 text-[11px] font-brand-heading uppercase tracking-widest text-indigo-500 w-[65%]">Summary</TableCell>
+                <TableCell isHeader className="px-10 py-5 text-right text-[11px] font-brand-heading uppercase tracking-widest text-indigo-500 w-[10%]">Action</TableCell>
               </TableRow>
             </TableHeader>
             <TableBody>
               {conversations.length > 0 ? conversations.map((conv) => (
                 <TableRow key={conv.c_id} className="group hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
-                  <TableCell className="px-10 py-6">
+                  <TableCell className="px-10 py-6 align-top overflow-hidden">
                     <div className="text-[10px] font-bold text-indigo-500 uppercase tracking-wider mb-1">{conv.interaction_date}</div>
-                    <div className={`font-brand-body-bold text-[13px] uppercase ${isDark ? 'text-white' : 'text-slate-900'}`}>{conv.c_title}</div>
+                    <div className={`font-brand-body-bold text-[13px] uppercase whitespace-pre-wrap break-words leading-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                      {conv.c_title}
+                    </div>
                   </TableCell>
-                  <TableCell className={`px-10 py-6 text-[12px] leading-relaxed max-w-md ${secondaryText}`}>{conv.c_desc}</TableCell>
-                  <TableCell className="px-10 py-6 text-right">
+                  <TableCell className="px-10 py-6 align-top overflow-hidden">
+                    <div className={`text-[12px] leading-relaxed whitespace-pre-wrap break-words ${secondaryText}`}>
+                      {conv.c_desc}
+                    </div>
+                  </TableCell>
+                  <TableCell className="px-10 py-6 text-right align-top">
                     <button onClick={() => openEditConv(conv)} className="p-2.5 hover:bg-indigo-500/10 rounded-xl text-indigo-500 transition-all">
                       <Pencil size={18} />
                     </button>
@@ -300,8 +342,6 @@ export default function ClientDetail({ isDark }) {
     </div>
   );
 }
-
-// --- SHARED COMPONENTS ---
 
 function InfoItem({ label, value, icon: Icon, secondaryText, isDark, isStatus }) {
   return (

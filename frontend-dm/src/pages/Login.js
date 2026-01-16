@@ -8,7 +8,6 @@ const Login = ({ isDark, setIsDark, onLogin }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // Your requested text colors
   const slateText = isDark ? 'text-slate-300' : 'text-slate-600';
 
   const handleSubmit = async (e) => {
@@ -17,9 +16,18 @@ const Login = ({ isDark, setIsDark, onLogin }) => {
     setError('');
 
     try {
+      // Note: Make sure this path matches your PHP setup (login.php or users.php/login)
       const response = await axiosClient.post('/login.php', { email, password });
       
       if (response.data.status === 'success') {
+        // --- THE FIX: STORE THE TOKEN ---
+        // Without this line, axiosClient will always fail with 403 on the next request
+        localStorage.setItem('token', response.data.token);
+        
+        // Save user data for UI state
+        localStorage.setItem('user', JSON.stringify(response.data.user));
+        
+        // Pass user to parent component state
         onLogin(response.data.user);
       } else {
         setError(response.data.message);
@@ -33,11 +41,9 @@ const Login = ({ isDark, setIsDark, onLogin }) => {
 
   return (
     <div className={`min-h-screen flex transition-all duration-500 ${isDark ? 'bg-slate-900' : 'bg-slate-50'}`}>
-      
-      {/* LEFT SIDE: Branding & Artistic Curve */}
+      {/* LEFT SIDE: Branding */}
       <div className="hidden lg:flex w-[45%] relative bg-indigo-600 overflow-hidden">
         <div className="absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-white via-indigo-400 to-transparent"></div>
-        
         <div className="relative z-10 w-full flex flex-col items-center justify-center p-12 text-white">
           <div className="w-24 h-24 bg-white/10 backdrop-blur-2xl rounded-[32px] flex items-center justify-center mb-8 border border-white/20">
              <ShieldCheck size={48} />
@@ -47,8 +53,6 @@ const Login = ({ isDark, setIsDark, onLogin }) => {
           </h1>
           <div className="mt-8 h-1 w-12 bg-indigo-300 rounded-full"></div>
         </div>
-
-        {/* THE CONCAVE S-CURVE SEPARATOR */}
         <div className="absolute top-0 right-[-2px] h-full w-24 z-20">
           <svg className="h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
             <path 
@@ -60,7 +64,7 @@ const Login = ({ isDark, setIsDark, onLogin }) => {
         </div>
       </div>
 
-      {/* RIGHT SIDE: Login Form */}
+      {/* RIGHT SIDE: Form */}
       <div className="flex-1 flex flex-col relative">
         <button 
           onClick={() => setIsDark(!isDark)}

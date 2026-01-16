@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Table,
@@ -9,21 +9,18 @@ import {
 } from "../components/ui/table";
 import Button from "../components/ui/button/Button";
 import { 
-  Plus, Search, RefreshCw, ChevronRight, 
-  User, ShieldCheck, Mail
+  Plus, ChevronRight, User, ShieldCheck, Mail, CheckCircle2, XCircle, UserCircle
 } from "lucide-react";
 import axiosClient from "../api/axiosClient";
 
-export default function UsersList({ isDark }) {
-  const [searchTerm, setSearchTerm] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [users, setUsers] = useState([]);
+export default function UsersList({ isDark, activeFilters, onDataLoaded }) {
   const navigate = useNavigate();
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  // Color constants based on your preference: Slate 300 for dark, 600 for light
+  // Design tokens using Slate 300 (Dark) and Slate 600 (Light) as requested
   const secondaryTextColor = isDark ? 'text-slate-300' : 'text-slate-600';
 
-  // 1. Fetch data on component mount
   useEffect(() => {
     fetchUsers();
   }, []);
@@ -33,13 +30,13 @@ export default function UsersList({ isDark }) {
     try {
       const response = await axiosClient.get('/users.php');
       const formattedData = response.data.map(u => ({
-        id: u.id,
-        name: u.full_name, 
-        email: u.email,
-        role: u.role,
-        is_active: u.is_active
+        ...u,
+        name: u.full_name,
+        status_label: u.is_active == 1 ? "Active" : "Inactive"
       }));
       setUsers(formattedData);
+      
+      if (onDataLoaded) onDataLoaded(formattedData);
     } catch (err) {
       console.error("Failed to load users:", err);
     } finally {
@@ -47,61 +44,74 @@ export default function UsersList({ isDark }) {
     }
   };
 
+  // FILTER & SORT LOGIC (Local execution - no 500 connection risk)
   const filteredUsers = useMemo(() => {
-    return users.filter((u) =>
-      u.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-      u.email.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-  }, [users, searchTerm]);
+    const filtered = users.filter(user => {
+      // 1. GLOBAL SEARCH
+      const globalSearchValue = activeFilters?.global_search?.[0]?.toLowerCase() || "";
+      const matchesGlobal = !globalSearchValue || [
+        user.full_name,
+        user.email,
+        user.role,
+        user.status_label
+      ].some(val => String(val || "").toLowerCase().includes(globalSearchValue));
+
+      // 2. SIDEBAR STATUS FILTER
+      const matchesStatus = !activeFilters?.status_label?.length || 
+                           activeFilters.status_label.includes(user.status_label);
+
+      return matchesGlobal && matchesStatus;
+    });
+
+    // SORT: Active First, then Alphabetical A-Z
+    return [...filtered].sort((a, b) => {
+      if (a.is_active !== b.is_active) {
+        return b.is_active - a.is_active; 
+      }
+      return a.full_name.localeCompare(b.full_name);
+    });
+  }, [users, activeFilters]);
+
+  const getStatusConfig = (isActive) => {
+    // Added 'w-fit' to constrain tag to text size
+    const tagBase = "px-3 py-1.5 rounded-lg text-[10px] font-brand-heading uppercase border flex items-center gap-1.5 transition-colors w-fit";
+    if (isActive == 1) {
+      return {
+        label: "Active",
+        icon: <CheckCircle2 size={12} />,
+        classes: `${tagBase} ${isDark ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-emerald-50 text-emerald-600 border-emerald-100'}`
+      };
+    }
+    return {
+      label: "Inactive",
+      icon: <XCircle size={12} />,
+      classes: `${tagBase} ${isDark ? 'bg-slate-800 text-slate-500 border-slate-700' : 'bg-slate-100 text-slate-400 border-slate-200'}`
+    };
+  };
 
   return (
     <div className={`p-6 space-y-6 min-h-screen transition-colors duration-300`}>
       
-      {/* HEADER */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="text-left">
-          <h2 className={`text-2xl font-brand-heading uppercase tracking-tight transition-colors ${isDark ? 'text-slate-100' : 'text-slate-800'}`}>
+      {/* HEADER CONTAINER - -mt-8 and Centered structure */}
+      <div className="relative flex items-center justify-center min-h-[100px] -mt-8">
+        <div className="text-center">
+          <h2 className={`text-2xl font-brand-heading uppercase tracking-tight ${isDark ? 'text-slate-100' : 'text-slate-800'}`}>
             Staff Directory
           </h2>
           <p className={`text-[13px] font-brand-body-bold transition-colors ${secondaryTextColor}`}>
-            Manage team members and system permissions.
+            MANAGE TEAM MEMBERS AND SYSTEM PERMISSIONS.
           </p>
         </div>
-        <div className="flex gap-2">
-           <button 
-             onClick={fetchUsers} 
-             className={`p-2.5 border rounded-xl transition-all ${
-               isDark ? 'bg-slate-800 border-slate-700 hover:bg-slate-700' : 'bg-white border-gray-200 hover:bg-gray-100'
-             }`}
-           >
-             <RefreshCw size={20} className={loading ? "animate-spin text-indigo-500" : (isDark ? "text-slate-500" : "text-gray-400")} />
-           </button>
-           
-           {/* Professional Router Navigation for Adding User */}
-           <Button 
-            onClick={() => navigate('/users/new')} 
-            className="flex items-center gap-2 shadow-lg shadow-indigo-500/20 bg-indigo-600 border-none font-brand-body-bold uppercase tracking-widest text-xs"
-           >
-             <Plus size={18} /> Add Staff Member
-           </Button>
-        </div>
-      </div>
-
-      {/* SEARCH BAR CONTAINER */}
-      <div className={`grid grid-cols-1 md:grid-cols-3 gap-4 p-4 rounded-2xl border shadow-sm transition-all ${
-        isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-100'
-      }`}>
-        <div className="relative col-span-2">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-          <input 
-            type="text"
-            placeholder="Search by name or email..."
-            className={`w-full pl-10 pr-4 py-2.5 rounded-xl text-sm font-brand-body outline-none focus:ring-2 focus:ring-indigo-500 transition-all ${
-              isDark ? 'bg-slate-800 border-none text-slate-100 placeholder:text-slate-500' : 'bg-gray-50 border-none text-gray-900'
-            }`}
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
+        
+        {/* Top-Right Action Button */}
+        <div className="absolute right-0 top-1/2 -translate-y-1/2">
+            <Button 
+              onClick={() => navigate('/users/new')} 
+              className={`flex items-center gap-2 shadow-lg font-brand-body-bold uppercase tracking-widest text-xs transition-all duration-300
+                ${isDark ? 'bg-indigo-600/80 backdrop-blur-md border border-indigo-500/20 hover:bg-indigo-600' : 'bg-indigo-600 hover:bg-indigo-700'}`}
+            >
+              <Plus size={18} /> Add Staff Member
+            </Button>
         </div>
       </div>
 
@@ -110,38 +120,45 @@ export default function UsersList({ isDark }) {
         isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-200'
       }`}>
         <div className="overflow-x-auto w-full">
-          {loading && users.length === 0 ? (
-            <div className="p-20 text-center uppercase tracking-widest font-black text-xs text-indigo-500">Loading Database...</div>
-          ) : (
-            <Table className="min-w-[600px] w-full text-left">
-              <TableHeader className={isDark ? 'bg-slate-800/50' : 'bg-gray-50/50'}>
-                <TableRow className={isDark ? 'border-slate-800' : 'border-gray-100'}>
-                  <TableCell isHeader className={`px-6 py-4 text-[11px] font-brand-heading uppercase tracking-widest ${secondaryTextColor}`}>Member Identity</TableCell>
-                  <TableCell isHeader className={`px-6 py-4 text-[11px] font-brand-heading uppercase tracking-widest ${secondaryTextColor}`}>Access Level</TableCell>
-                  <TableCell isHeader className={`px-6 py-4 text-right text-[11px] font-brand-heading uppercase tracking-widest ${secondaryTextColor}`}>Navigation</TableCell>
+          <Table className="min-w-[800px] w-full text-left">
+            <TableHeader className={isDark ? 'bg-slate-800/50' : 'bg-gray-50/50'}>
+              <TableRow className={isDark ? 'border-slate-800' : 'border-gray-100'}>
+                <TableCell isHeader className={`px-6 py-4 text-[11px] font-brand-heading uppercase tracking-widest ${secondaryTextColor}`}>Member Identity</TableCell>
+                <TableCell isHeader className={`px-6 py-4 text-[11px] font-brand-heading uppercase tracking-widest ${secondaryTextColor}`}>Access Level</TableCell>
+                <TableCell isHeader className={`px-6 py-4 text-[11px] font-brand-heading uppercase tracking-widest ${secondaryTextColor}`}>Status</TableCell>
+                <TableCell isHeader className={`px-6 py-4 text-right text-[11px] font-brand-heading uppercase tracking-widest ${secondaryTextColor}`}>View</TableCell>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading ? (
+                <TableRow>
+                  <TableCell colSpan={4} className="py-20 text-center uppercase text-[10px] tracking-widest opacity-50">
+                    Loading Database...
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredUsers.map((user) => (
+              ) : filteredUsers.length > 0 ? filteredUsers.map((user) => {
+                const status = getStatusConfig(user.is_active);
+                return (
                   <TableRow 
                     key={user.id} 
                     className={`cursor-pointer transition-all group border-b last:border-none ${
                       isDark ? 'hover:bg-slate-800 border-slate-800' : 'hover:bg-indigo-50/30 border-gray-50'
                     }`}
-                    // Professional Router Navigation for Detail view
                     onClick={() => navigate(`/users/${user.id}`)}
                   >
                     <TableCell className="px-6 py-5">
                       <div className="flex items-center gap-4">
-                        <div className={`w-12 h-12 rounded-xl shadow-sm flex items-center justify-center border shrink-0 transition-colors ${
-                          isDark ? 'bg-slate-800 border-slate-700' : 'bg-indigo-100 border-indigo-50'
+                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center border font-brand-heading text-xs shrink-0 ${
+                          isDark ? 'bg-slate-800 border-slate-700 text-indigo-400' : 'bg-gray-50 border-gray-200 text-indigo-600'
                         }`}>
-                          <User size={20} className={isDark ? "text-indigo-400" : "text-indigo-600"} />
+                          <User size={18} />
                         </div>
-                        <div className="text-left">
-                          <div className={`font-brand-body-bold transition-colors uppercase tracking-tight text-sm ${
+                        <div>
+                          <div className={`font-brand-body-bold uppercase tracking-tight text-sm ${
                             isDark ? 'text-slate-100 group-hover:text-indigo-400' : 'text-gray-900 group-hover:text-indigo-600'
-                          }`}>{user.name}</div>
+                          }`}>
+                            {user.full_name}
+                          </div>
                           <div className={`text-[10px] font-brand-heading uppercase tracking-widest flex items-center gap-1 ${secondaryTextColor}`}>
                             <Mail size={10}/> {user.email}
                           </div>
@@ -150,13 +167,18 @@ export default function UsersList({ isDark }) {
                     </TableCell>
                     <TableCell className="px-6 py-5">
                       <div className="flex items-center gap-2">
-                        <span className={`px-3 py-1.5 rounded-lg text-[10px] font-brand-heading uppercase border flex items-center gap-1.5 transition-colors ${
+                        <span className={`px-3 py-1.5 rounded-lg text-[10px] font-brand-heading uppercase border flex items-center gap-1.5 transition-colors w-fit ${
                           isDark 
                           ? 'bg-slate-800 text-slate-300 border-slate-700' 
                           : 'bg-slate-50 text-slate-600 border-slate-200'
                         }`}>
                           <ShieldCheck size={12} className="text-indigo-500" /> {user.role}
                         </span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="px-6 py-5">
+                      <div className={status.classes}>
+                        {status.icon} {status.label}
                       </div>
                     </TableCell>
                     <TableCell className="px-6 py-5 text-right">
@@ -167,10 +189,19 @@ export default function UsersList({ isDark }) {
                       </div>
                     </TableCell>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
+                );
+              }) : (
+                <TableRow>
+                  <TableCell colSpan={4} className="py-20 text-center">
+                    <div className="flex flex-col items-center gap-2 opacity-40">
+                      <UserCircle size={40} className={isDark ? 'text-slate-500' : 'text-gray-400'} />
+                      <p className={`text-[10px] font-brand-heading uppercase tracking-widest ${secondaryTextColor}`}>No staff members found</p>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
         </div>
       </div>
     </div>

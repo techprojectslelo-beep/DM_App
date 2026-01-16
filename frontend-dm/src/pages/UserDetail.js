@@ -2,16 +2,16 @@ import React, { useState, useEffect } from "react";
 import { useParams, useNavigate, useOutletContext } from "react-router-dom";
 import { 
   ArrowLeft, User, Mail, ShieldCheck, 
-  Lock, UserPlus, Eye, EyeOff, Loader2, Edit3, X
+  Lock, UserPlus, Eye, EyeOff, Loader2, Edit3, X, Trash2
 } from "lucide-react";
 import Button from "../components/ui/button/Button";
 import axiosClient from "../api/axiosClient";
 
 export default function UserDetail({ isCreateMode = false }) {
   // PROFESSIONAL ROUTER HOOKS
-  const { id } = useParams(); // Gets ID from URL /users/:id
+  const { id } = useParams(); 
   const navigate = useNavigate();
-  const { isDark } = useOutletContext(); // Inherit theme from Dashboard Outlet
+  const { isDark } = useOutletContext(); 
 
   const [isEditing, setIsEditing] = useState(isCreateMode);
   const [showPassword, setShowPassword] = useState(false);
@@ -34,7 +34,6 @@ export default function UserDetail({ isCreateMode = false }) {
   const secondaryTextColor = isDark ? 'text-slate-300' : 'text-slate-600';
 
   useEffect(() => {
-    // Only fetch if we have an ID and aren't in 'Create' mode
     if (!isCreateMode && id) {
       const fetchUserData = async () => {
         setLoading(true);
@@ -61,11 +60,27 @@ export default function UserDetail({ isCreateMode = false }) {
         await axiosClient.put(`/users.php?id=${id}`, profile);
       }
       setIsEditing(false);
-      navigate('/users'); // Go back to list after professional save
+      navigate('/users'); 
     } catch (err) {
       alert(err.response?.data?.message || "Operation failed");
     } finally {
       setLoading(false);
+    }
+  };
+
+  // NEW DEACTIVATE LOGIC
+  const handleDeactivate = async () => {
+    if (window.confirm("Are you sure you want to deactivate this staff member? They will no longer be able to log in.")) {
+      setLoading(true);
+      try {
+        // We update the is_active status to 0
+        await axiosClient.put(`/users.php?id=${id}`, { ...profile, is_active: 0 });
+        navigate('/users');
+      } catch (err) {
+        alert("Deactivation failed");
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
@@ -195,8 +210,14 @@ export default function UserDetail({ isCreateMode = false }) {
               )}
               
               {!isCreateMode && (
-                <button className={`text-[11px] font-brand-heading uppercase tracking-widest hover:text-red-500 transition-colors ml-auto ${secondaryTextColor}`}>
-                  Deactivate Account
+                <button 
+                  onClick={handleDeactivate}
+                  title="Deactivate Account"
+                  className={`p-3 rounded-xl border transition-all hover:bg-red-500 hover:text-white hover:border-red-500 ml-auto ${
+                    isDark ? 'border-slate-700 text-slate-500' : 'border-slate-200 text-slate-400'
+                  }`}
+                >
+                  <Trash2 size={18} />
                 </button>
               )}
             </div>
@@ -207,7 +228,7 @@ export default function UserDetail({ isCreateMode = false }) {
   );
 }
 
-// SHARED COMPONENTS (Inherit isDark from Props)
+// SHARED COMPONENTS
 function DetailInput({ label, icon: Icon, isDark, disabled, ...props }) {
   return (
     <div className="text-left w-full">

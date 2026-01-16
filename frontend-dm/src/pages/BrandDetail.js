@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Table, TableBody, TableCell, TableHeader, TableRow } from "../components/ui/table";
 import { ArrowLeft, Building2, Briefcase, Plus, X, Trash2, Save, Mail, Edit3, Loader2, Globe } from "lucide-react";
@@ -13,6 +13,9 @@ export default function EntityServiceDetail({ isDark }) {
   const [loading, setLoading] = useState(!isNew);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
+  
+  // Guard to prevent double-firing on mount
+  const hasFetched = useRef(false);
 
   // Text Colors: Slate 300 for dark, Slate 600 for light
   const secondaryText = isDark ? 'text-slate-300' : 'text-slate-600';
@@ -23,17 +26,10 @@ export default function EntityServiceDetail({ isDark }) {
     website: "" 
   });
 
-  // Services State - Removed description
   const [services, setServices] = useState([]);
   const [serviceForm, setServiceForm] = useState({ 
     service_name: ""
   });
-
-  useEffect(() => {
-    if (!isNew) {
-      fetchBrandData();
-    }
-  }, [id]);
 
   const fetchBrandData = async () => {
     try {
@@ -52,6 +48,14 @@ export default function EntityServiceDetail({ isDark }) {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    // Only fetch if not a "new" brand and hasn't fetched yet
+    if (!isNew && !hasFetched.current) {
+      fetchBrandData();
+      hasFetched.current = true;
+    }
+  }, [id, isNew]);
 
   const handleSaveProfile = async () => {
     try {
@@ -74,13 +78,13 @@ export default function EntityServiceDetail({ isDark }) {
   const handleSaveService = async () => {
     try {
       if (editingId) {
-        // Logic for updateService can be added here if implemented in PHP
         alert("Update service logic pending backend update");
       } else {
         await brandService.addService(id, {
             service_name: serviceForm.service_name
         });
       }
+      // Re-fetch data after adding/updating service
       fetchBrandData(); 
       resetForm();
     } catch (err) {
@@ -123,7 +127,7 @@ export default function EntityServiceDetail({ isDark }) {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 max-w-7xl mx-auto w-full">
         <button 
           onClick={() => navigate('/brands')} 
-          className={`group flex items-center gap-2 transition-colors font-brand-heading uppercase text-[14px] tracking-widest ${
+          className={`group flex items-center gap-2 transition-colors font-brand-heading uppercase text-[14px] tracking-widest font-bold ${
             isDark ? 'text-slate-300 hover:text-indigo-400' : 'text-slate-600 hover:text-indigo-600'
           }`}
         >
@@ -148,7 +152,7 @@ export default function EntityServiceDetail({ isDark }) {
           <div className={`border rounded-[32px] p-8 shadow-sm space-y-6 transition-all ${
             isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-gray-200'
           }`}>
-            <h3 className={`text-[12px] font-brand-heading uppercase tracking-widest ${secondaryText}`}>
+            <h3 className={`text-[12px] font-brand-heading font-bold uppercase tracking-widest ${secondaryText}`}>
               Entity Profile
             </h3>
             
@@ -178,7 +182,7 @@ export default function EntityServiceDetail({ isDark }) {
           {isNew ? (
             <div className={`border rounded-[32px] p-20 text-center border-dashed ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
                <Building2 className="mx-auto text-slate-500 mb-4 opacity-20" size={48} />
-               <p className={`font-brand-heading uppercase tracking-[0.2em] text-xs ${secondaryText}`}>
+               <p className={`font-brand-heading uppercase tracking-[0.2em] text-xs font-bold ${secondaryText}`}>
                  Save the brand profile first to manage services
                </p>
             </div>
@@ -186,7 +190,7 @@ export default function EntityServiceDetail({ isDark }) {
             <div className={`border rounded-[32px] p-8 shadow-sm animate-in fade-in zoom-in-95 ${
               isDark ? 'bg-slate-900 border-slate-800 text-slate-300' : 'bg-white border-gray-100'
             }`}>
-              <h3 className={`text-lg font-brand-heading uppercase mb-6 flex items-center gap-2 ${isDark ? 'text-white' : 'text-slate-800'}`}>
+              <h3 className={`text-lg font-brand-heading uppercase font-bold mb-6 flex items-center gap-2 ${isDark ? 'text-white' : 'text-slate-800'}`}>
                 <Briefcase className="text-indigo-500" /> {editingId ? "Edit Service" : "Register Service"}
               </h3>
               
@@ -205,7 +209,7 @@ export default function EntityServiceDetail({ isDark }) {
             </div>
           ) : (
             <div className="space-y-6">
-              <h2 className={`text-2xl font-brand-heading uppercase tracking-tight px-2 ${isDark ? 'text-slate-100' : 'text-slate-800'}`}>Offered Services</h2>
+              <h2 className={`text-2xl font-brand-heading uppercase font-bold tracking-tight px-2 ${isDark ? 'text-slate-100' : 'text-slate-800'}`}>Offered Services</h2>
 
               <div className={`rounded-[32px] border overflow-hidden shadow-sm transition-all ${
                 isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-200'
@@ -213,8 +217,8 @@ export default function EntityServiceDetail({ isDark }) {
                 <Table className="w-full text-left">
                   <TableHeader className={isDark ? 'bg-slate-800/50' : 'bg-gray-50/50'}>
                     <TableRow className={isDark ? 'border-slate-800' : 'border-slate-200'}>
-                      <TableCell isHeader className={`px-6 py-5 text-[11px] font-brand-table-head uppercase tracking-widest ${secondaryText}`}>Service Name</TableCell>
-                      <TableCell isHeader className={`px-6 py-5 text-right text-[11px] font-brand-table-head uppercase tracking-widest ${secondaryText}`}>Actions</TableCell>
+                      <TableCell isHeader className={`px-6 py-5 text-[11px] font-bold uppercase tracking-widest ${secondaryText}`}>Service Name</TableCell>
+                      <TableCell isHeader className={`px-6 py-5 text-right text-[11px] font-bold uppercase tracking-widest ${secondaryText}`}>Actions</TableCell>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -241,7 +245,7 @@ export default function EntityServiceDetail({ isDark }) {
                     ) : (
                       <TableRow>
                         <TableCell colSpan={2} className="py-20 text-center">
-                          <p className={`text-[10px] font-brand-heading uppercase tracking-[0.3em] opacity-40 ${secondaryText}`}>No services registered</p>
+                          <p className={`text-[10px] font-brand-heading uppercase font-bold tracking-[0.3em] opacity-40 ${secondaryText}`}>No services registered</p>
                         </TableCell>
                       </TableRow>
                     )}
@@ -260,7 +264,7 @@ function DetailInput({ label, icon: Icon, isDark, onChange, ...props }) {
   const secondaryText = isDark ? 'text-slate-300' : 'text-slate-600';
   return (
     <div className="text-left w-full">
-      <label className={`text-[11px] font-brand-heading uppercase block mb-1.5 ml-1 tracking-widest transition-colors ${secondaryText}`}>
+      <label className={`text-[11px] font-brand-heading font-bold uppercase block mb-1.5 ml-1 tracking-widest transition-colors ${secondaryText}`}>
         {label}
       </label>
       <div className="relative">

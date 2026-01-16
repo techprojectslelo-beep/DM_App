@@ -21,6 +21,10 @@ const userService = {
             throw error;
         }
     },
+    getMinimalUsers: async () => {
+    const response = await axiosClient.get('/user-list.php');
+    return response.data.data; // Note: returns the array inside "data"
+  },
 
     /**
      * Fetches a single user by ID

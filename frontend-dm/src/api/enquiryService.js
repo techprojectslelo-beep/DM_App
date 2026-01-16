@@ -46,16 +46,19 @@ const enquiryService = {
     },
 
     // 7. Edit a specific conversation (id = c_id)
-    updateConversation: async (c_id, data) => {
-        const response = await axiosClient.post(`enquiry.php?id=${c_id}&type=update_conversation`, data);
-        return response.data;
-    },
 
-    // 8. Delete a specific log entry (id = c_id)
-    deleteConversation: async (c_id) => {
-        const response = await axiosClient.delete(`enquiry.php?id=${c_id}&type=conversation`);
-        return response.data;
-    }
+  updateConversation: async (enquiryId, convId, data) => {
+    // We pass enquiry_id in the body so the router can pick it up
+    const payload = { ...data, enquiry_id: enquiryId };
+    const response = await axiosClient.post(`enquiry.php?type=update_conversation&id=${convId}`, payload);
+    return response.data;
+  },
+
+  deleteConversation: async (convId) => {
+    // Your PHP expects type=conversation and id=convId
+    const response = await axiosClient.delete(`enquiry.php?type=conversation&id=${convId}`);
+    return response.data;
+  }
 };
 
 export default enquiryService;

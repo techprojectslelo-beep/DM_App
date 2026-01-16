@@ -10,7 +10,6 @@ import interactionPlugin from "@fullcalendar/interaction";
 import RightSidebar from './RightSidebar'; 
 import taskService from '../../api/taskService'; 
 
-// Added onDataLoaded prop to sync with Sidebar
 const DailyStackView = ({ isSidebarOpen, isDark, activeFilters = {}, onDataLoaded }) => {
   const [viewMode, setViewMode] = useState('weekly'); 
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -19,16 +18,24 @@ const DailyStackView = ({ isSidebarOpen, isDark, activeFilters = {}, onDataLoade
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const calendarRef = useRef(null);
+  
+  const fetchingRef = useRef(false);
 
-  // Get current user from storage
   const [currentUser, setCurrentUser] = useState(() => {
     const savedUser = localStorage.getItem('user');
-    // Ensure we have a default if localStorage is empty
     return savedUser ? JSON.parse(savedUser) : { name: "Yadnesh", role: "staff", id: 1 };
   });
   
-  // Custom theme colors (Slate 600 for light, Slate 300 for dark)
   const slateText = isDark ? 'text-slate-300' : 'text-slate-600';
+
+  // --- SAFETY FIX: SYNC WITH PARENT ---
+  useEffect(() => {
+    // We only notify the parent AFTER the component has rendered the new posts.
+    // This prevents the "Cannot update a component while rendering a different component" error.
+    if (onDataLoaded && posts.length > 0) {
+      onDataLoaded(posts);
+    }
+  }, [posts, onDataLoaded]);
 
   const getDerivedStatus = (post) => {
     if (post.posted_at) return "Posted";
@@ -37,13 +44,10 @@ const DailyStackView = ({ isSidebarOpen, isDark, activeFilters = {}, onDataLoade
     return "Pending";
   };
 
-  // Dynamic Filtering Logic
-// Dynamic Filtering Logic
   const filteredPosts = useMemo(() => {
     return posts.filter(post => {
       const p = post.extendedProps;
       
-      // --- Status Filter (The "Bifurcation" Logic) ---
       if (activeFilters.status?.length > 0) {
         const s = activeFilters.status;
         const isPosted = !!p.posted_at;
@@ -51,39 +55,29 @@ const DailyStackView = ({ isSidebarOpen, isDark, activeFilters = {}, onDataLoade
         const isReady = !!p.readied_at;
         const isClaimed = !!p.ready_by_id;
 
-        // Check against each selected filter checkbox
         const matchStatus = s.some(filterValue => {
           if (filterValue === "Posted") return isPosted;
           if (filterValue === "Not Posted") return !isPosted;
-          
           if (filterValue === "Confirmed") return isConfirmed;
           if (filterValue === "Not Confirmed") return !isConfirmed;
-          
           if (filterValue === "Ready") return isReady;
           if (filterValue === "Not Ready") return !isReady;
-          
           if (filterValue === "Claimed") return isClaimed;
           if (filterValue === "Not Claimed") return !isClaimed;
-          
           if (filterValue === "Pending") return !isReady && !isConfirmed && !isPosted;
-          
           return false;
         });
-
         if (!matchStatus) return false;
       }
 
-      // Filter by Brand
       if (activeFilters.brand_name?.length > 0) {
         if (!activeFilters.brand_name.includes(p.brand_name)) return false;
       }
 
-      // Filter by Post Type
       if (activeFilters.type_name?.length > 0) {
         if (!activeFilters.type_name.includes(p.post_type)) return false;
       }
 
-      // Filter by Staff
       if (activeFilters.ready_by_name?.length > 0) {
         if (!activeFilters.ready_by_name.includes(p.ready_by_name)) return false;
       }
@@ -93,7 +87,11 @@ const DailyStackView = ({ isSidebarOpen, isDark, activeFilters = {}, onDataLoade
   }, [posts, activeFilters]);
 
   const fetchTasks = async () => {
+    if (fetchingRef.current) return;
+    
+    fetchingRef.current = true;
     setLoading(true);
+    
     try {
       const month = selectedDate.getMonth() + 1;
       const year = selectedDate.getFullYear();
@@ -101,7 +99,6 @@ const DailyStackView = ({ isSidebarOpen, isDark, activeFilters = {}, onDataLoade
       
       const mappedPosts = data.map(task => {
         const dateOnly = task.task_due_date.split('T')[0];
-        
         return {
           id: task.id.toString(),
           title: task.brand_name || "Untitled", 
@@ -109,7 +106,6 @@ const DailyStackView = ({ isSidebarOpen, isDark, activeFilters = {}, onDataLoade
           allDay: true,
           extendedProps: {
             ...task,
-            // Ensure ready_by_name is prioritized from the task object
             ready_by_name: task.ready_by_name || (task.ready_by_id ? "Claimed" : null),
             actual_time: task.task_due_date,
             status: getDerivedStatus(task),
@@ -120,18 +116,18 @@ const DailyStackView = ({ isSidebarOpen, isDark, activeFilters = {}, onDataLoade
       });
       
       setPosts(mappedPosts);
-      // CRITICAL: Push data up to parent so Sidebar can see it
-      if (onDataLoaded) onDataLoaded(mappedPosts);
+      // Removed onDataLoaded from here to prevent render-collision
     } catch (err) {
       console.error("Failed to fetch tasks:", err);
     } finally {
       setLoading(false);
+      fetchingRef.current = false;
     }
   };
 
   useEffect(() => {
     fetchTasks();
-  }, [selectedDate.getMonth(), selectedDate.getFullYear()]);
+  }, [selectedDate.getFullYear(), selectedDate.getMonth()]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -148,12 +144,10 @@ const DailyStackView = ({ isSidebarOpen, isDark, activeFilters = {}, onDataLoade
 
   const handleSaveChanges = async (updatedPost) => {
     try {
-        // Perform the API update
         await taskService.updateTask(updatedPost.id, updatedPost);
         
-        // Immediately update local state so the UI reflects changes without a full refetch flicker
         setPosts(prevPosts => {
-          const newPosts = prevPosts.map(p => {
+          return prevPosts.map(p => {
             if (p.id === updatedPost.id.toString()) {
               return {
                 ...p,
@@ -166,13 +160,10 @@ const DailyStackView = ({ isSidebarOpen, isDark, activeFilters = {}, onDataLoade
             }
             return p;
           });
-          if (onDataLoaded) onDataLoaded(newPosts);
-          return newPosts;
+          // The useEffect[posts] will automatically update the parent state
         });
 
         setIsSidebarDetailOpen(false);
-        // Optional: still fetch in background to sync with DB
-        fetchTasks(); 
     } catch (err) {
         console.error("Save error:", err);
         alert("Failed to save changes");
@@ -295,13 +286,13 @@ const DailyStackView = ({ isSidebarOpen, isDark, activeFilters = {}, onDataLoade
               <div className={`flex items-center rounded-xl p-1 border transition-colors ${
                 isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-100 border-slate-200'
               }`}>
-                <button onClick={() => changeDate(-1)} className={`p-2.5 rounded-lg transition-colors ${isDark ? 'hover:bg-slate-700 text-slate-400' : 'hover:bg-white text-slate-600'}`}><ChevronLeft size={18}/></button>
+                <button onClick={() => changeDate(-1)} className={`p-2.5 rounded-lg transition-colors ${isDark ? 'hover:bg-slate-700 text-slate-400' : 'hover:bg-slate-100 text-slate-600'}`}><ChevronLeft size={18}/></button>
                 <button onClick={() => {
                   const today = new Date();
                   setSelectedDate(today);
                   if (calendarRef.current) calendarRef.current.getApi().gotoDate(today);
                 }} className={`px-3 text-[10px] font-black uppercase transition-colors ${slateText}`}>Today</button>
-                <button onClick={() => changeDate(1)} className={`p-2.5 rounded-lg transition-colors ${isDark ? 'hover:bg-slate-700 text-slate-400' : 'hover:bg-white text-slate-600'}`}><ChevronRight size={18}/></button>
+                <button onClick={() => changeDate(1)} className={`p-2.5 rounded-lg transition-colors ${isDark ? 'hover:bg-slate-700 text-slate-400' : 'hover:bg-slate-100 text-slate-600'}`}><ChevronRight size={18}/></button>
               </div>
             </div>
 
@@ -331,7 +322,7 @@ const DailyStackView = ({ isSidebarOpen, isDark, activeFilters = {}, onDataLoade
 
         {/* View Content */}
         <div className="flex-1 overflow-hidden flex flex-col">
-          {loading ? (
+          {loading && posts.length === 0 ? (
             <div className="flex-1 flex items-center justify-center">
                <Loader2 className="animate-spin text-indigo-500" size={40} />
             </div>
@@ -363,7 +354,7 @@ const DailyStackView = ({ isSidebarOpen, isDark, activeFilters = {}, onDataLoade
                               >
                                 <div className={`absolute left-0 top-0 bottom-0 w-2 ${styles.accent} group-hover:w-3 transition-all duration-300`} />
                                 <div className={`w-10 h-10 rounded-xl flex items-center justify-center border overflow-hidden shrink-0 mr-8 relative z-10 transition-colors ${
-                                  isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-100'
+                                  isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-100 border-slate-100'
                                 }`}>
                                   <div className={`text-xs font-black ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                                     {p.brand_name?.charAt(0)}
@@ -381,7 +372,7 @@ const DailyStackView = ({ isSidebarOpen, isDark, activeFilters = {}, onDataLoade
                                           {p.ready_by_name || p.created_by_name || "Unassigned"}
                                         </span>
                                       </div>
-                                      <StatusTag label={p.ready_by_id ? 'Claimed' : 'Available'} color={p.ready_by_id ? 'green' : 'orange'} isActive={true} />
+                                      <StatusTag label={p.readied_at ? 'Ready' : 'Not Ready'} color={p.readied_at ? 'green' : 'orange'} isActive={!!p.readied_at} />
                                     </div>
                                   </div>
                                   <div className={`flex items-center gap-3 px-6 border-l transition-colors ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
@@ -410,15 +401,18 @@ const DailyStackView = ({ isSidebarOpen, isDark, activeFilters = {}, onDataLoade
             }`}>
               <style>{`
                 .fc { --fc-border-color: ${isDark ? '#334155' : '#e2e8f0'}; }
-                .fc-theme-standard .fc-scrollgrid { border: 1px solid ${isDark ? '#334155' : '#e2e8f0'} !important; border-radius: 24px; overflow: hidden; }
+                .fc-theme-standard .fc-scrollgrid { border: 1px solid ${isDark ? '#334155' : '#e2e8f0'} !important; border-radius: 24px; overflow: hidden; background: ${isDark ? 'transparent' : '#f8fafc'}; }
                 .fc .fc-daygrid-day-number { font-size: 11px; font-weight: 900; padding: 12px; color: ${isDark ? '#94a3b8' : '#64748b'}; }
+                .fc .fc-col-header { background: ${isDark ? '#1e293b' : '#ffffff'}; }
+                .fc .fc-col-header-cell { position: sticky; top: 0; z-index: 10; background: ${isDark ? '#0f172a' : '#ffffff'}; }
                 .fc .fc-col-header-cell-cushion { font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.15em; padding: 15px 0; color: ${isDark ? '#64748b' : '#94a3b8'}; }
                 .fc-daygrid-day-events { min-height: 3em !important; padding: 4px !important; }
                 .fc-day-today { background: ${isDark ? 'rgba(99, 102, 241, 0.08)' : 'rgba(99, 102, 241, 0.04)'} !important; }
                 .fc-event { cursor: pointer !important; background: transparent !important; border: none !important; margin-bottom: 2px !important; }
+                .fc-daygrid-body { background: ${isDark ? 'transparent' : '#f1f5f9'}; }
               `}</style>
 
-              <div className="w-full max-w-[1600px] mx-auto bg-white dark:bg-slate-800/50 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800 p-6">
+              <div className="w-full max-w-[1600px] mx-auto bg-slate-100 dark:bg-slate-800/50 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800 ">
                 <FullCalendar
                   key={`calendar-${viewMode}-${filteredPosts.length}`} 
                   ref={calendarRef}
